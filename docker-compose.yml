@@ -1,6 +1,6 @@
 services:
-  twineo:
-    image: twineo:latest
+  twinr:
+    image: twinr:latest
     build:
       context: .
       dockerfile: Dockerfile
