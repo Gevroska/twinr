@@ -80,7 +80,8 @@ const Stream: Component = () => {
     { value: "audio_only", label: "Audio only" },
   ];
   const safeUsername = String(params.username || "").toLowerCase();
-  let hlsInstance: Hls, videoRef: HTMLVideoElement, chatScroll: HTMLDivElement;
+  let hlsInstance: Hls, mediaRef: HTMLMediaElement, chatScroll: HTMLDivElement;
+  const isAudioOnly = () => String(queryParams.quality || "") === "audio_only";
 
   if (!Hls.isSupported()) setHlsSuportStatus(false);
 
@@ -108,17 +109,17 @@ const Stream: Component = () => {
       });
 
       const retry = () => {
-        hlsInstance.attachMedia(videoRef);
+        hlsInstance.attachMedia(mediaRef);
         hlsInstance.loadSource(streamUrl);
         hlsInstance.startLoad();
       };
 
-      hlsInstance.attachMedia(videoRef);
+      hlsInstance.attachMedia(mediaRef);
 
       hlsInstance.on(Hls.Events.MEDIA_ATTACHED, () =>
         hlsInstance.loadSource(streamUrl)
       );
-      hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => videoRef.play());
+      hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => mediaRef.play());
       hlsInstance.on(Hls.Events.ERROR, function (_, data) {
         if (data.fatal) {
           switch (data.type) {
@@ -395,7 +396,18 @@ const Stream: Component = () => {
           <div class="container mx-auto px-4 py-3 md:py-5">
             <div class="mx-auto flex w-full max-w-7xl flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)] lg:items-start">
               <div class="w-full">
-                <video ref={videoRef} controls class="w-full rounded-md" />
+                <Show
+                  when={isAudioOnly()}
+                  fallback={
+                    <video
+                      ref={mediaRef}
+                      controls
+                      class="w-full rounded-md"
+                    />
+                  }
+                >
+                  <audio ref={mediaRef} controls class="w-full" />
+                </Show>
                 <div class="mt-2">
                   <label class="label p-0">
                     <span class="label-text text-sm">Resolution</span>
