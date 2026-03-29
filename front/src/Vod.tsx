@@ -64,10 +64,11 @@ const Vods: Component = () => {
   ];
 
   let hlsInstance: Hls,
-    videoRef: HTMLVideoElement,
+    mediaRef: HTMLMediaElement,
     scroll: HTMLDivElement,
     playbackListenerRef: ((ev: Event) => void) | undefined,
     chatRetryTimeout: number | undefined;
+  const isAudioOnly = () => String(queryParams.quality || "") === "audio_only";
 
   if (!Hls.isSupported()) setHlsSuportStatus(false);
 
@@ -81,17 +82,17 @@ const Vods: Component = () => {
       });
 
       const retry = () => {
-        hlsInstance.attachMedia(videoRef);
+        hlsInstance.attachMedia(mediaRef);
         hlsInstance.loadSource(streamUrl);
         hlsInstance.startLoad();
       };
 
-      hlsInstance.attachMedia(videoRef);
+      hlsInstance.attachMedia(mediaRef);
 
       hlsInstance.on(Hls.Events.MEDIA_ATTACHED, () =>
         hlsInstance.loadSource(streamUrl)
       );
-      hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => videoRef.play());
+      hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => mediaRef.play());
       hlsInstance.on(Hls.Events.ERROR, function (_, data) {
         if (data.fatal) {
           switch (data.type) {
@@ -165,14 +166,14 @@ const Vods: Component = () => {
     console.log(`[Log] Loaded ${emoteList.length} emotes.`);
 
     function playbackListener() {
-      const time = Math.round(videoRef.currentTime);
+      const time = Math.round(mediaRef.currentTime);
       if (latestItem == time || time < commentsStart) return;
 
       latestItem = time;
 
       // load more comments
       if (time == commentsEnd || time > commentsEnd) {
-        videoRef.removeEventListener("timeupdate", playbackListener);
+        mediaRef.removeEventListener("timeupdate", playbackListener);
         initChat(time > commentsEnd ? time : commentsEnd, emoteList);
         return;
       }
@@ -210,15 +211,15 @@ const Vods: Component = () => {
       scroll.scrollTop = scroll.scrollHeight;
     }
     if (playbackListenerRef) {
-      videoRef.removeEventListener("timeupdate", playbackListenerRef);
+      mediaRef.removeEventListener("timeupdate", playbackListenerRef);
     }
     if (playbackListenerRef) {
-      videoRef.removeEventListener("timeupdate", playbackListenerRef);
+      mediaRef.removeEventListener("timeupdate", playbackListenerRef);
     }
     if (playbackListenerRef) {
-      videoRef.removeEventListener("timeupdate", playbackListenerRef);
+      mediaRef.removeEventListener("timeupdate", playbackListenerRef);
     }
-    videoRef.addEventListener("timeupdate", playbackListener);
+    mediaRef.addEventListener("timeupdate", playbackListener);
   };
   async function fetchVodInfo() {
     try {
@@ -272,8 +273,8 @@ const Vods: Component = () => {
       hlsInstance.destroy();
     }
 
-    if (playbackListenerRef && videoRef) {
-      videoRef.removeEventListener("timeupdate", playbackListenerRef);
+    if (playbackListenerRef && mediaRef) {
+      mediaRef.removeEventListener("timeupdate", playbackListenerRef);
     }
 
     if (chatRetryTimeout) {
@@ -342,7 +343,18 @@ const Vods: Component = () => {
           <div class="container mx-auto px-4 py-3 md:py-5">
             <div class="mx-auto flex w-full max-w-7xl flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)] lg:items-start">
               <div class="w-full">
-                <video ref={videoRef} controls class="w-full rounded-md" />
+                <Show
+                  when={isAudioOnly()}
+                  fallback={
+                    <video
+                      ref={mediaRef}
+                      controls
+                      class="w-full rounded-md"
+                    />
+                  }
+                >
+                  <audio ref={mediaRef} controls class="w-full" />
+                </Show>
                 <div class="mt-2">
                   <label class="label p-0">
                     <span class="label-text text-sm">Resolution</span>
