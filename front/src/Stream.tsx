@@ -3,11 +3,10 @@ import {
   For,
   Show,
   createEffect,
-  createMemo,
   createSignal,
   lazy,
-  onCleanup,
   onMount,
+  onCleanup,
 } from "solid-js";
 import { useSearchParams, useParams } from "@solidjs/router";
 import axios from "axios";
@@ -45,9 +44,6 @@ const Stream: Component = () => {
     [isVodlistReady, setVodlistReadyStatus] = createSignal(false),
     [isCliplistReady, setCliplistReadyStatus] = createSignal(false),
     [loadingError, setLoadingError] = createSignal(""),
-    [selectedQuality, setSelectedQuality] = createSignal(
-      String(queryParams.quality || "720")
-    ),
     queryLimit = 100,
     requestConfig = {
       headers: {
@@ -70,24 +66,11 @@ const Stream: Component = () => {
             })
             .join("&")}`
         : "",
+    streamUrl = `${instanceBaseUrl}/api/stream/${params.username}${queryString}`,
     base64encode = (content: string) => btoa(content),
     encodeProxyUrl = (content: string) =>
       encodeURIComponent(base64encode(content));
   const safeUsername = String(params.username || "").toLowerCase();
-  const streamUrl = createMemo(() => {
-    const selected = selectedQuality().trim();
-    return `${instanceBaseUrl}/api/stream/${params.username}?quality=${encodeURIComponent(
-      selected.length > 0 ? selected : "720"
-    )}`;
-  });
-  const qualityOptions = [
-    { value: "1080", label: "1920x1080" },
-    { value: "720", label: "1280x720" },
-    { value: "480", label: "852x480" },
-    { value: "360", label: "640x360" },
-    { value: "160", label: "284x160" },
-    { value: "audio", label: "Audio only" },
-  ];
   let hlsInstance: Hls, videoRef: HTMLVideoElement, chatScroll: HTMLDivElement;
 
   if (!Hls.isSupported()) setHlsSuportStatus(false);
@@ -104,7 +87,7 @@ const Stream: Component = () => {
         manifestLoadingRetryDelay: 500,
         xhrSetup: (xhr, url) => {
           const normalizedRequestUrl = url.replace(/\?$/, ""),
-            normalizedStreamUrl = streamUrl().replace(/\?$/, "");
+            normalizedStreamUrl = streamUrl.replace(/\?$/, "");
 
           if (normalizedRequestUrl !== normalizedStreamUrl) {
             xhr.open(
@@ -117,14 +100,14 @@ const Stream: Component = () => {
 
       const retry = () => {
         hlsInstance.attachMedia(videoRef);
-        hlsInstance.loadSource(streamUrl());
+        hlsInstance.loadSource(streamUrl);
         hlsInstance.startLoad();
       };
 
       hlsInstance.attachMedia(videoRef);
 
       hlsInstance.on(Hls.Events.MEDIA_ATTACHED, () =>
-        hlsInstance.loadSource(streamUrl())
+        hlsInstance.loadSource(streamUrl)
       );
       hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => videoRef.play());
       hlsInstance.on(Hls.Events.ERROR, function (_, data) {
@@ -283,17 +266,9 @@ const Stream: Component = () => {
   // handle hls stream
   createEffect(() => {
     if (isReady() == true && isLive() == true) {
-      if (hlsInstance) {
-        hlsInstance.destroy();
-      }
       initHlsStream();
     }
   });
-
-  const onQualityChange = (value: string) => {
-    setSelectedQuality(value);
-    setQueryParams({ quality: value }, { replace: true, scroll: false });
-  };
 
   return (
     <>
@@ -401,73 +376,35 @@ const Stream: Component = () => {
           </div>
         </Show>
         <Show when={isLive() == true}>
-          <div class="container mx-auto px-4 py-4 lg:px-6">
-            <div class="mb-3 flex justify-end">
-              <label class="form-control w-full max-w-xs">
-                <span class="label-text text-sm font-medium">
-                  Stream quality
-                </span>
-                <select
-                  class="select select-bordered select-sm"
-                  value={selectedQuality()}
-                  onchange={(e) => onQualityChange(e.currentTarget.value)}
-                >
-                  <For each={qualityOptions}>
-                    {(option) => (
-                      <option value={option.value}>{option.label}</option>
-                    )}
-                  </For>
-                </select>
-              </label>
-            </div>
-
-            <div class="grid items-start gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
-              <div class="w-full">
-                <div class="overflow-hidden rounded-md border border-base-200 bg-black shadow-md">
-                  <video ref={videoRef} controls class="w-full" />
+          <div class="container md:py-5">
+            <div class="flex justify-center items-center">
+              <div class="md:ml-40 flex flex-col md:flex-row md:gap-2">
+                <div class="w-full md:w-3/4 md:h-auto">
+                  <video ref={videoRef} controls />
+                  <div class="p-1">
+                    <LiveMetadata
+                      title={streamMetadata()?.title!}
+                      views={streamMetadata()?.views!}
+                      game={streamMetadata()?.game!}
+                      avatar={`${instanceBaseUrl}/api/proxy?url=${base64encode(
+                        streamMetadata()?.avatar!
+                      )}`}
+                      username={params.username}
+                    />
+                  </div>
                 </div>
-                <div class="mt-2">
-                  <label class="form-control w-full max-w-xs">
-                    <span class="label-text text-sm font-medium">
-                      Quality (quick switch)
-                    </span>
-                    <select
-                      class="select select-bordered select-sm"
-                      value={selectedQuality()}
-                      onchange={(e) => onQualityChange(e.currentTarget.value)}
+                <div class="w-full md:w-2/4">
+                  <div class="border border-base-200 rounded-md shadow-md p-4 w-auto">
+                    <h2 class="text-xl">Chat</h2>
+                    <div
+                      class="mt-3 h-96 md:h-80 overflow-auto break-words"
+                      style={{
+                        "scrollbar-width": "thin",
+                      }}
+                      ref={chatScroll}
                     >
-                      <For each={qualityOptions}>
-                        {(option) => (
-                          <option value={option.value}>{option.label}</option>
-                        )}
-                      </For>
-                    </select>
-                  </label>
-                </div>
-                <div class="p-1">
-                  <LiveMetadata
-                    title={streamMetadata()?.title!}
-                    views={streamMetadata()?.views!}
-                    game={streamMetadata()?.game!}
-                    avatar={`${instanceBaseUrl}/api/proxy?url=${base64encode(
-                      streamMetadata()?.avatar!
-                    )}`}
-                    username={params.username}
-                  />
-                </div>
-              </div>
-
-              <div class="w-full">
-                <div class="w-auto rounded-md border border-base-200 p-4 shadow-md">
-                  <h2 class="text-xl">Chat</h2>
-                  <div
-                    class="mt-3 h-80 overflow-auto break-words lg:h-[34rem]"
-                    style={{
-                      "scrollbar-width": "thin",
-                    }}
-                    ref={chatScroll}
-                  >
-                    <StreamChat username={safeUsername} scroll={chatScroll} />
+                      <StreamChat username={safeUsername} scroll={chatScroll} />
+                    </div>
                   </div>
                 </div>
               </div>
