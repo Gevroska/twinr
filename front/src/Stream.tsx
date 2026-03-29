@@ -70,6 +70,15 @@ const Stream: Component = () => {
     base64encode = (content: string) => btoa(content),
     encodeProxyUrl = (content: string) =>
       encodeURIComponent(base64encode(content));
+  const resolutionOptions = [
+    { value: "", label: "Auto" },
+    { value: "1080", label: "1920x1080" },
+    { value: "720", label: "1280x720" },
+    { value: "480", label: "852x480" },
+    { value: "360", label: "640x360" },
+    { value: "160", label: "284x160" },
+    { value: "audio_only", label: "Audio only" },
+  ];
   const safeUsername = String(params.username || "").toLowerCase();
   let hlsInstance: Hls, videoRef: HTMLVideoElement, chatScroll: HTMLDivElement;
 
@@ -201,6 +210,13 @@ const Stream: Component = () => {
 
     fetchStreamerInfo();
   });
+
+  const handleResolutionChange = (quality: string) => {
+    const nextParams = { ...queryParams };
+    if (quality.length < 1) delete nextParams.quality;
+    else nextParams.quality = quality;
+    setQueryParams(nextParams);
+  };
 
   // updating metadata every 1 minute
   const streamMetadataUpdater = setInterval(async () => {
@@ -376,28 +392,46 @@ const Stream: Component = () => {
           </div>
         </Show>
         <Show when={isLive() == true}>
-          <div class="container md:py-5">
-            <div class="flex justify-center items-center">
-              <div class="md:ml-40 flex flex-col md:flex-row md:gap-2">
-                <div class="w-full md:w-3/4 md:h-auto">
-                  <video ref={videoRef} controls />
-                  <div class="p-1">
-                    <LiveMetadata
-                      title={streamMetadata()?.title!}
-                      views={streamMetadata()?.views!}
-                      game={streamMetadata()?.game!}
-                      avatar={`${instanceBaseUrl}/api/proxy?url=${base64encode(
-                        streamMetadata()?.avatar!
-                      )}`}
-                      username={params.username}
-                    />
-                  </div>
+          <div class="container mx-auto px-4 py-3 md:py-5">
+            <div class="mx-auto flex w-full max-w-7xl flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)] lg:items-start">
+              <div class="w-full">
+                <video ref={videoRef} controls class="w-full rounded-md" />
+                <div class="mt-2">
+                  <label class="label p-0">
+                    <span class="label-text text-sm">Resolution</span>
+                  </label>
+                  <select
+                    class="select select-bordered select-sm w-full max-w-[220px]"
+                    value={String(queryParams.quality || "")}
+                    onchange={(e) =>
+                      handleResolutionChange(e.currentTarget.value)
+                    }
+                  >
+                    <For each={resolutionOptions}>
+                      {(option) => (
+                        <option value={option.value}>{option.label}</option>
+                      )}
+                    </For>
+                  </select>
                 </div>
-                <div class="w-full md:w-2/4">
-                  <div class="border border-base-200 rounded-md shadow-md p-4 w-auto">
-                    <h2 class="text-xl">Chat</h2>
+                <div class="p-1">
+                  <LiveMetadata
+                    title={streamMetadata()?.title!}
+                    views={streamMetadata()?.views!}
+                    game={streamMetadata()?.game!}
+                    avatar={`${instanceBaseUrl}/api/proxy?url=${base64encode(
+                      streamMetadata()?.avatar!
+                    )}`}
+                    username={params.username}
+                  />
+                </div>
+              </div>
+              <div class="w-full">
+                <div class="border border-base-200 rounded-md shadow-md p-4 w-auto">
+                  <h2 class="text-xl">Chat</h2>
+                  <div class="p-1">
                     <div
-                      class="mt-3 h-96 md:h-80 overflow-auto break-words"
+                      class="mt-3 h-72 md:h-96 lg:h-[70vh] overflow-auto break-words"
                       style={{
                         "scrollbar-width": "thin",
                       }}
