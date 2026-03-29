@@ -493,7 +493,7 @@ async fn emotes(
 
 #[derive(Deserialize)]
 struct QualityQuery {
-    quality: Option<String>,
+    quality: Option<u32>,
 }
 
 async fn stream_proxy(
@@ -501,7 +501,7 @@ async fn stream_proxy(
     Path(username): Path<String>,
     Query(query): Query<QualityQuery>,
 ) -> impl IntoResponse {
-    let quality = query.quality.unwrap_or_else(|| "720".to_string());
+    let _q = query.quality.unwrap_or(720);
     let device = uuid::Uuid::new_v4().to_string();
     let token_req = state.client.post("https://gql.twitch.tv/gql")
       .header("Client-Id", &state.client_id)
@@ -534,25 +534,8 @@ async fn stream_proxy(
         )
             .into_response();
     }
-    let url = format!(
-        "https://usher.ttvnw.net/api/channel/hls/{}.m3u8?player_type=pulsar&player_backend=mediaplayer&playlist_include_framerate=true&allow_source=true&transcode_mode=cbr_v1&cdm=wv&player_version=1.22.0&token={}&sig={}",
-        username.to_lowercase(),
-        urlencoding::encode(token),
-        sig
-    );
-    let list_text = match fetch_raw_text(&state, &url, true).await {
-        Ok(t) => t,
-        Err(r) => return r,
-    };
-    let selected = select_playlist(&list_text, &quality).unwrap_or_default();
-    if selected.is_empty() {
-        return (
-            [(header::CONTENT_TYPE, "application/vnd.apple.mpegurl")],
-            list_text,
-        )
-            .into_response();
-    }
-    fetch_text(&state, &selected, true).await
+    let url = format!("https://usher.ttvnw.net/api/channel/hls/{}.m3u8?player_type=pulsar&player_backend=mediaplayer&playlist_include_framerate=true&allow_source=true&transcode_mode=cbr_v1&cdm=wv&player_version=1.22.0&token={}&sig={}", username.to_lowercase(), urlencoding::encode(token), sig);
+    fetch_text(&state, &url, true).await
 }
 
 async fn vod_proxy(
@@ -560,7 +543,7 @@ async fn vod_proxy(
     Path(id): Path<String>,
     Query(query): Query<QualityQuery>,
 ) -> impl IntoResponse {
-    let quality = query.quality.unwrap_or_else(|| "720".to_string());
+    let quality = query.quality.unwrap_or(720);
     let token = gql(&state, json!({"query":"query PlaybackAccessToken_Template($login: String!, $isLive: Boolean!, $vodID: ID!, $isVod: Boolean!, $playerType: String!) { videoPlaybackAccessToken(id: $vodID, params: {platform: \"web\", playerBackend: \"mediaplayer\", playerType: $playerType}) @include(if: $isVod) { value signature } }","variables":{"isLive":false,"login":"","isVod":true,"vodID":id,"playerType":"site"}}), false).await;
     let Ok(token) = token else {
         return (
@@ -591,7 +574,7 @@ async fn vod_proxy(
         Ok(t) => t,
         Err(r) => return r,
     };
-    let selected = select_playlist(&list_text, &quality).unwrap_or_default();
+    let selected = select_playlist(&list_text, quality).unwrap_or_default();
     if selected.is_empty() {
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -625,21 +608,8 @@ async fn vod_proxy(
         .into_response()
 }
 
-fn select_playlist(manifest: &str, quality: &str) -> Option<String> {
+fn select_playlist(manifest: &str, quality: u32) -> Option<String> {
     let lines: Vec<&str> = manifest.lines().collect();
-    if quality.eq_ignore_ascii_case("audio") {
-        for i in 0..lines.len().saturating_sub(1) {
-            let line = lines[i].to_ascii_lowercase();
-            if line.contains("audio_only") || line.contains("audio-only") {
-                let next = lines[i + 1].trim();
-                if next.starts_with("http") {
-                    return Some(next.to_string());
-                }
-            }
-        }
-    }
-
-    let quality = quality.parse::<u32>().unwrap_or(720);
     for i in 0..lines.len().saturating_sub(1) {
         if lines[i].contains("RESOLUTION=") && lines[i].contains(&format!("x{quality}")) {
             let next = lines[i + 1].trim();
