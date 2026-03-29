@@ -565,7 +565,8 @@ async fn stream_proxy(
             .into_response();
     }
 
-    let selected = select_playlist(&list_text, &quality).unwrap_or_default();
+    let selected_ref = select_playlist(&list_text, &quality).unwrap_or_default();
+    let selected = resolve_playlist_url(&url, &selected_ref);
     if selected.is_empty() {
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -637,7 +638,8 @@ async fn vod_proxy(
         Ok(t) => t,
         Err(r) => return r,
     };
-    let selected = select_playlist(&list_text, &quality).unwrap_or_default();
+    let selected_ref = select_playlist(&list_text, &quality).unwrap_or_default();
+    let selected = resolve_playlist_url(&playlist_url, &selected_ref);
     if selected.is_empty() {
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -687,19 +689,37 @@ fn select_playlist(manifest: &str, quality: &QualityPreference) -> Option<String
             }
         }
         QualityPreference::AudioOnly => {
+            for line in &lines {
+                let info = line.to_ascii_lowercase();
+                if line.starts_with("#EXT-X-MEDIA:")
+                    && info.contains("type=audio")
+                    && info.contains("group-id=\"audio")
+                {
+                    if let Some(uri_start) = line.find("URI=\"") {
+                        let uri = &line[uri_start + 5..];
+                        if let Some(uri_end) = uri.find('"') {
+                            return Some(uri[..uri_end].to_string());
+                        }
+                    }
+                }
+            }
+
             for i in 0..lines.len().saturating_sub(1) {
                 let info = lines[i].to_ascii_lowercase();
-                let seems_audio_only = info.contains("audio")
+                let seems_audio_only = info.contains("audio_only")
+                    || (info.contains("audio")
+                        && !info.contains("resolution=")
+                        && !info.contains("avc1")
+                        && !info.contains("hvc1")
+                        && !info.contains("vp9"))
                     || (!info.contains("resolution=")
                         && !info.contains("avc1")
                         && !info.contains("hvc1")
-                        && !info.contains("vp9"));
+                        && !info.contains("vp9")
+                        && info.contains("mp4a"));
 
                 if lines[i].starts_with("#EXT-X-STREAM-INF:") && seems_audio_only {
-                    let next = lines[i + 1].trim();
-                    if next.starts_with("http") {
-                        return Some(next.to_string());
-                    }
+                    return Some(lines[i + 1].trim().to_string());
                 }
             }
         }
@@ -708,8 +728,20 @@ fn select_playlist(manifest: &str, quality: &QualityPreference) -> Option<String
 
     lines
         .iter()
-        .find(|l| l.starts_with("http"))
-        .map(|x| x.to_string())
+        .find(|l| !l.trim().is_empty() && !l.starts_with('#'))
+        .map(|x| x.trim().to_string())
+}
+
+fn resolve_playlist_url(source_url: &str, selected_ref: &str) -> String {
+    if selected_ref.is_empty() {
+        return String::new();
+    }
+    if selected_ref.starts_with("http://") || selected_ref.starts_with("https://") {
+        return selected_ref.to_string();
+    }
+
+    let base = source_url.rsplit_once('/').map(|(prefix, _)| prefix).unwrap_or("");
+    format!("{base}/{selected_ref}")
 }
 
 async fn fetch_raw_text(state: &AppState, url: &str, mobile: bool) -> Result<String, Response> {
