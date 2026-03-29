@@ -24,7 +24,7 @@ const DownloadVods = lazy(() => import("./components/downloadVod"));
 
 const Vods: Component = () => {
   const instanceBaseUrl = window.location.origin,
-    [{ ...queryParams }, _] = useSearchParams(),
+    [{ ...queryParams }, setQueryParams] = useSearchParams(),
     { id } = useParams(),
     [isReady, setReadyStatus] = createSignal(false),
     [isValid, setValidStatus] = createSignal<boolean>(),
@@ -53,12 +53,22 @@ const Vods: Component = () => {
     streamUrl = `${instanceBaseUrl}/api/vod/${id}${queryString}`,
     isDownloadEnabled = import.meta.env.VITE_ENABLE_EXPERIMENTAL === "true",
     base64encode = (content: string) => btoa(content);
+  const resolutionOptions = [
+    { value: "", label: "Auto" },
+    { value: "1080", label: "1920x1080" },
+    { value: "720", label: "1280x720" },
+    { value: "480", label: "852x480" },
+    { value: "360", label: "640x360" },
+    { value: "160", label: "284x160" },
+    { value: "audio_only", label: "Audio only" },
+  ];
 
   let hlsInstance: Hls,
-    videoRef: HTMLVideoElement,
+    mediaRef: HTMLMediaElement,
     scroll: HTMLDivElement,
     playbackListenerRef: ((ev: Event) => void) | undefined,
     chatRetryTimeout: number | undefined;
+  const isAudioOnly = () => String(queryParams.quality || "") === "audio_only";
 
   if (!Hls.isSupported()) setHlsSuportStatus(false);
 
@@ -72,17 +82,17 @@ const Vods: Component = () => {
       });
 
       const retry = () => {
-        hlsInstance.attachMedia(videoRef);
+        hlsInstance.attachMedia(mediaRef);
         hlsInstance.loadSource(streamUrl);
         hlsInstance.startLoad();
       };
 
-      hlsInstance.attachMedia(videoRef);
+      hlsInstance.attachMedia(mediaRef);
 
       hlsInstance.on(Hls.Events.MEDIA_ATTACHED, () =>
         hlsInstance.loadSource(streamUrl)
       );
-      hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => videoRef.play());
+      hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => mediaRef.play());
       hlsInstance.on(Hls.Events.ERROR, function (_, data) {
         if (data.fatal) {
           switch (data.type) {
@@ -156,14 +166,14 @@ const Vods: Component = () => {
     console.log(`[Log] Loaded ${emoteList.length} emotes.`);
 
     function playbackListener() {
-      const time = Math.round(videoRef.currentTime);
+      const time = Math.round(mediaRef.currentTime);
       if (latestItem == time || time < commentsStart) return;
 
       latestItem = time;
 
       // load more comments
       if (time == commentsEnd || time > commentsEnd) {
-        videoRef.removeEventListener("timeupdate", playbackListener);
+        mediaRef.removeEventListener("timeupdate", playbackListener);
         initChat(time > commentsEnd ? time : commentsEnd, emoteList);
         return;
       }
@@ -201,15 +211,15 @@ const Vods: Component = () => {
       scroll.scrollTop = scroll.scrollHeight;
     }
     if (playbackListenerRef) {
-      videoRef.removeEventListener("timeupdate", playbackListenerRef);
+      mediaRef.removeEventListener("timeupdate", playbackListenerRef);
     }
     if (playbackListenerRef) {
-      videoRef.removeEventListener("timeupdate", playbackListenerRef);
+      mediaRef.removeEventListener("timeupdate", playbackListenerRef);
     }
     if (playbackListenerRef) {
-      videoRef.removeEventListener("timeupdate", playbackListenerRef);
+      mediaRef.removeEventListener("timeupdate", playbackListenerRef);
     }
-    videoRef.addEventListener("timeupdate", playbackListener);
+    mediaRef.addEventListener("timeupdate", playbackListener);
   };
   async function fetchVodInfo() {
     try {
@@ -263,8 +273,8 @@ const Vods: Component = () => {
       hlsInstance.destroy();
     }
 
-    if (playbackListenerRef && videoRef) {
-      videoRef.removeEventListener("timeupdate", playbackListenerRef);
+    if (playbackListenerRef && mediaRef) {
+      mediaRef.removeEventListener("timeupdate", playbackListenerRef);
     }
 
     if (chatRetryTimeout) {
@@ -291,6 +301,13 @@ const Vods: Component = () => {
   });
 
   fetchVodInfo();
+
+  const handleResolutionChange = (quality: string) => {
+    const nextParams = { ...queryParams };
+    if (quality.length < 1) delete nextParams.quality;
+    else nextParams.quality = quality;
+    setQueryParams(nextParams);
+  };
 
   return (
     <>
@@ -323,92 +340,119 @@ const Vods: Component = () => {
           </div>
         </Show>
         <Show when={isValid() == true}>
-          <div class="container md:py-5">
-            <div class="flex justify-center items-center">
-              <div class="md:ml-40 flex flex-col md:flex-row md:gap-2">
-                <div class="w-full md:w-3/4 md:h-auto">
-                  <video ref={videoRef} controls />
-                  <div class="p-1">
+          <div class="container mx-auto px-4 py-3 md:py-5">
+            <div class="mx-auto flex w-full max-w-7xl flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)] lg:items-start">
+              <div class="w-full">
+                <Show
+                  when={isAudioOnly()}
+                  fallback={
+                    <video
+                      ref={mediaRef}
+                      controls
+                      class="w-full rounded-md"
+                    />
+                  }
+                >
+                  <audio ref={mediaRef} controls class="w-full" />
+                </Show>
+                <div class="mt-2">
+                  <label class="label p-0">
+                    <span class="label-text text-sm">Resolution</span>
+                  </label>
+                  <select
+                    class="select select-bordered select-sm w-full max-w-[220px]"
+                    value={String(queryParams.quality || "")}
+                    onchange={(e) =>
+                      handleResolutionChange(e.currentTarget.value)
+                    }
+                  >
+                    <For each={resolutionOptions}>
+                      {(option) => (
+                        <option value={option.value}>{option.label}</option>
+                      )}
+                    </For>
+                  </select>
+                </div>
+                <div class="p-1">
+                  {isDownloadEnabled == true ? (
+                    <Show when={isDownloadSectionOpen() == true}>
+                      <div class="mt-1 mb-2">
+                        <DownloadVods
+                          id={id}
+                          queryString={queryString}
+                          streamer={vodInfo()?.username!}
+                          title={vodInfo()?.title!}
+                        />
+                      </div>
+                    </Show>
+                  ) : (
+                    <></>
+                  )}
+                  <h2 class="text-lg font-semibold">
+                    {vodInfo()?.title}{" "}
                     {isDownloadEnabled == true ? (
-                      <Show when={isDownloadSectionOpen() == true}>
-                        <div class="mt-1 mb-2">
-                          <DownloadVods
-                            id={id}
-                            queryString={queryString}
-                            streamer={vodInfo()?.username!}
-                            title={vodInfo()?.title!}
-                          />
-                        </div>
-                      </Show>
+                      <button
+                        class="btn btn-xs"
+                        onclick={() =>
+                          setIsDownloadSectionOpen(!isDownloadSectionOpen())
+                        }
+                      >
+                        <Show when={isDownloadSectionOpen() == false}>
+                          <BiSolidDownload fill="#FFFF" />
+                        </Show>
+                        <Show when={isDownloadSectionOpen() == true}>
+                          <BiRegularX fill="#FFFF" />
+                        </Show>
+                      </button>
                     ) : (
                       <></>
                     )}
-                    <h2 class="text-lg font-semibold">
-                      {vodInfo()?.title}{" "}
-                      {isDownloadEnabled == true ? (
-                        <button
-                          class="btn btn-xs"
-                          onclick={() =>
-                            setIsDownloadSectionOpen(!isDownloadSectionOpen())
-                          }
-                        >
-                          <Show when={isDownloadSectionOpen() == false}>
-                            <BiSolidDownload fill="#FFFF" />
-                          </Show>
-                          <Show when={isDownloadSectionOpen() == true}>
-                            <BiRegularX fill="#FFFF" />
-                          </Show>
-                        </button>
-                      ) : (
-                        <></>
-                      )}
-                    </h2>
-                    <span class="text-indigo-400">{vodInfo()?.game}</span>
-                    <A
-                      class="mt-1 flex flex-row space-x-1"
-                      href={`/${vodInfo()?.loginName}${queryString}`}
-                    >
-                      <img
-                        class="w-8 rounded-full"
-                        id="avatar"
-                        src={`${instanceBaseUrl}/api/proxy?url=${base64encode(
-                          vodInfo()?.avatar!
-                        )}`}
-                      />
-                      <span class="ml-1">{vodInfo()?.username}</span>
-                    </A>
-                  </div>
+                  </h2>
+                  <span class="text-indigo-400">{vodInfo()?.game}</span>
+                  <A
+                    class="mt-1 flex flex-row space-x-1"
+                    href={`/${vodInfo()?.loginName}${queryString}`}
+                  >
+                    <img
+                      class="w-8 rounded-full"
+                      id="avatar"
+                      src={`${instanceBaseUrl}/api/proxy?url=${base64encode(
+                        vodInfo()?.avatar!
+                      )}`}
+                    />
+                    <span class="ml-1">{vodInfo()?.username}</span>
+                  </A>
                 </div>
-                <div class="w-full md:w-2/4">
-                  <div class="border border-base-200 rounded-md shadow-md p-4 w-auto">
-                    <h2 class="text-xl">Chat</h2>
-                    <div
-                      class="mt-3 h-96 md:h-80 overflow-auto break-words"
-                      style={{
-                        "scrollbar-width": "thin",
-                      }}
-                      ref={scroll}
-                    >
-                      <For each={chatMessages()}>
-                        {(item) => (
-                          <div>
-                            <span
-                              style={{
-                                color: item.color,
-                              }}
-                            >
-                              {item.username}
-                            </span>
-                            :{" "}
-                            {item.emote === true ? (
-                              sanitizeEvalMessage(item.message)
-                            ) : (
-                              <span>{item.message}</span>
-                            )}
-                          </div>
-                        )}
-                      </For>
-                    </div>
+              </div>
+              <div class="w-full">
+                <div class="border border-base-200 rounded-md shadow-md p-4 w-auto">
+                  <h2 class="text-xl">Chat</h2>
+                  <div
+                    class="mt-3 h-72 md:h-96 lg:h-[70vh] overflow-auto break-words"
+                    style={{
+                      "scrollbar-width": "thin",
+                    }}
+                    ref={scroll}
+                  >
+                    <For each={chatMessages()}>
+                      {(item) => (
+                        <div>
+                          <span
+                            style={{
+                              color: item.color,
+                            }}
+                          >
+                            {item.username}
+                          </span>
+                          :{" "}
+                          {item.emote === true ? (
+                            sanitizeEvalMessage(item.message)
+                          ) : (
+                            <span>{item.message}</span>
+                          )}
+                        </div>
+                      )}
+                    </For>
                   </div>
                 </div>
               </div>
