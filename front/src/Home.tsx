@@ -139,6 +139,7 @@ const Home: Component = () => {
                     <option value="480">852x480</option>
                     <option value="360">640x360</option>
                     <option value="160">284x160</option>
+                    <option value="audio_only">Audio only</option>
                   </select>
                 </details>
 
