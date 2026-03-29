@@ -586,9 +586,9 @@ async fn stream_proxy(
             if line.starts_with('#') || line.trim().is_empty() {
                 line.to_string()
             } else if line.starts_with("http") {
-                format!("/api/proxy?url={}", STANDARD.encode(line))
+                line.to_string()
             } else {
-                format!("/api/proxy?url={}", STANDARD.encode(format!("{base}/{line}")))
+                format!("{base}/{line}")
             }
         })
         .collect::<Vec<_>>()
