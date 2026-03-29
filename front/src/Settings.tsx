@@ -6,7 +6,7 @@ const Settings: Component = () => {
     return (
         <>
             <Nav isHome={false} />
-            <title>Twineo - Settings</title>
+            <title>Twinr - Settings</title>
             <div class="hero min-h-[80vh] px-4">
                 <div class="hero-content w-full max-w-2xl text-center">
                     <div class="card w-full border border-base-200 bg-base-100/90 shadow-xl backdrop-blur">

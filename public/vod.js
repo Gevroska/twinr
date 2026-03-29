@@ -101,7 +101,7 @@ if (Hls.isSupported()) {
         category.innerText = metadata.game;
         title.innerText = metadata.title;
 
-        document.title = `Twineo - VOD ${metadata.title}`;
+        document.title = `Twinr - VOD ${metadata.title}`;
     } catch (err) {
         console.error('[VOD] Failed to fetch metadata:', err);
         showPageError('Unable to load VOD details right now.');

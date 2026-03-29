@@ -1,6 +1,6 @@
-# Twineo
+# Twinr
 
-Twineo is a privacy-focused alternative front-end to Twitch inspired by [Invidious](https://github.com/iv-org/invidious) and [Nitter](https://github.com/zedeus/nitter).
+Twinr is a privacy-focused alternative front-end to Twitch inspired by [Invidious](https://github.com/iv-org/invidious) and [Nitter](https://github.com/zedeus/nitter).
 
 ## Architecture
 
@@ -21,11 +21,11 @@ Server runs on `http://localhost:3000`.
 ## Docker
 
 ```bash
-docker build -t twineo-rust .
+docker build -t twinr-rust .
 docker run --rm -p 3000:3000 \
   -e CLIENTID=kimne78kx3ncx6brgo4mv6wki5h1ko \
   -e USERAGENT="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36" \
-  twineo-rust
+  twinr-rust
 ```
 
 ## Environment variables
