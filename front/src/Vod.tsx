@@ -211,23 +211,6 @@ const Vods: Component = () => {
     }
     videoRef.addEventListener("timeupdate", playbackListener);
   };
-  const fetchVodInfo = async () => {
-    try {
-      setLoadingError("");
-      const req = await axios.get(`${instanceBaseUrl}/api/vodinfo/${id}`, {
-          headers: {
-            "Content-Type": "application/json",
-          },
-          validateStatus(status) {
-            return true;
-          },
-        }),
-        data: vodsApiResponse & { valid?: boolean } = req.data;
-
-    playbackListenerRef = playbackListener;
-    videoRef.addEventListener("timeupdate", playbackListener);
-  }
-
   async function fetchVodInfo() {
     try {
       setLoadingError("");
