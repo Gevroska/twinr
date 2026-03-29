@@ -7,15 +7,15 @@
         <meta property="og:type" content="website" />
 
         <% if (it.invalid == true) { %>
-        <title>Twineo - Clip</title>
-        <meta name="title" content="Twineo - Clip" />
-        <meta property="og:title" content="Twineo - Clip" />
+        <title>Twinr - Clip</title>
+        <meta name="title" content="Twinr - Clip" />
+        <meta property="og:title" content="Twinr - Clip" />
         <% } else { %>
-        <title>Twineo - Clip <%= it.metadata.title %></title>
-        <meta name="title" content="Twineo - Clip <%= it.metadata.title %>" />
+        <title>Twinr - Clip <%= it.metadata.title %></title>
+        <meta name="title" content="Twinr - Clip <%= it.metadata.title %>" />
         <meta
             property="og:title"
-            content="Twineo - Clip <%= it.metadata.title %>"
+            content="Twinr - Clip <%= it.metadata.title %>"
         />
         <% if(it.base_url !== undefined) { %>
         <meta name="twitter:card" content="player" />
@@ -108,10 +108,10 @@
         >
             <div>
                 <p>
-                    Twineo Version <%= it.appversion %> -
+                    Twinr Version <%= it.appversion %> -
                     <a
                         class="text-blue-400"
-                        href="https://codeberg.org/CloudyyUw/twineo"
+                        href="https://codeberg.org/CloudyyUw/twinr"
                         >Source</a
                     >
                 </p>

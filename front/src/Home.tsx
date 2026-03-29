@@ -98,12 +98,12 @@ const Home: Component = () => {
   return (
     <>
       <Nav isHome={false} />
-      <title>Twineo - Home</title>
+      <title>Twinr - Home</title>
       <div class="hero min-h-[80vh] px-4">
         <div class="hero-content w-full max-w-xl text-center">
           <div class="card w-full border border-base-200 bg-base-100/90 shadow-xl backdrop-blur">
             <div class="card-body gap-4">
-              <h1 class="text-3xl font-bold">Twineo</h1>
+              <h1 class="text-3xl font-bold">Twinr</h1>
               <p class="text-sm text-base-content/70">
                 Lightweight Twitch viewer focused on privacy.
               </p>
@@ -139,6 +139,7 @@ const Home: Component = () => {
                     <option value="480">852x480</option>
                     <option value="360">640x360</option>
                     <option value="160">284x160</option>
+                    <option value="audio">Audio only</option>
                   </select>
                 </details>
 

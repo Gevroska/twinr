@@ -33,10 +33,10 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /app/target/release/twineo /usr/local/bin/twineo
+COPY --from=builder /app/target/release/twinr /usr/local/bin/twinr
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/templates ./templates
 COPY --from=builder /app/package.json ./package.json
 
 EXPOSE 3000
-CMD ["/usr/local/bin/twineo"]
+CMD ["/usr/local/bin/twinr"]
