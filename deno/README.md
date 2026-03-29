@@ -1,1 +1,1 @@
-_Moved to the [Wiki](https://codeberg.org/CloudyyUw/twineo/wiki/Hosting-Deno)_
+_Moved to the [Wiki](https://codeberg.org/CloudyyUw/twinr/wiki/Hosting-Deno)_
