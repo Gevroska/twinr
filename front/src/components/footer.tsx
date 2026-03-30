@@ -8,7 +8,7 @@ const Footer: Component = () => {
                     Twinr -{' '}
                     <a
                         class="text-blue-400"
-                        href="https://codeberg.org/CloudyyUw/twinr"
+                        href="https://github.com/Gevroska/twinr"
                     >
                         Source
                     </a>
