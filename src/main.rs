@@ -499,12 +499,13 @@ struct QualityQuery {
 enum QualityPreference {
     Auto,
     Height(u32),
-    AudioOnly,
 }
 
 fn parse_quality_preference(value: Option<&str>) -> QualityPreference {
     match value {
-        Some(v) if v.eq_ignore_ascii_case("audio_only") => QualityPreference::AudioOnly,
+        // Audio-only playback is handled client-side by rendering an <audio> element.
+        // Keep backend stream selection on standard video renditions.
+        Some(v) if v.eq_ignore_ascii_case("audio_only") => QualityPreference::Auto,
         Some(v) => v
             .parse::<u32>()
             .map(QualityPreference::Height)
@@ -685,41 +686,6 @@ fn select_playlist(manifest: &str, quality: &QualityPreference) -> Option<String
                     if next.starts_with("http") {
                         return Some(next.to_string());
                     }
-                }
-            }
-        }
-        QualityPreference::AudioOnly => {
-            for line in &lines {
-                let info = line.to_ascii_lowercase();
-                if line.starts_with("#EXT-X-MEDIA:")
-                    && info.contains("type=audio")
-                    && info.contains("group-id=\"audio")
-                {
-                    if let Some(uri_start) = line.find("URI=\"") {
-                        let uri = &line[uri_start + 5..];
-                        if let Some(uri_end) = uri.find('"') {
-                            return Some(uri[..uri_end].to_string());
-                        }
-                    }
-                }
-            }
-
-            for i in 0..lines.len().saturating_sub(1) {
-                let info = lines[i].to_ascii_lowercase();
-                let seems_audio_only = info.contains("audio_only")
-                    || (info.contains("audio")
-                        && !info.contains("resolution=")
-                        && !info.contains("avc1")
-                        && !info.contains("hvc1")
-                        && !info.contains("vp9"))
-                    || (!info.contains("resolution=")
-                        && !info.contains("avc1")
-                        && !info.contains("hvc1")
-                        && !info.contains("vp9")
-                        && info.contains("mp4a"));
-
-                if lines[i].starts_with("#EXT-X-STREAM-INF:") && seems_audio_only {
-                    return Some(lines[i + 1].trim().to_string());
                 }
             }
         }
