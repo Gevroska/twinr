@@ -493,7 +493,25 @@ async fn emotes(
 
 #[derive(Deserialize)]
 struct QualityQuery {
-    quality: Option<u32>,
+    quality: Option<String>,
+}
+
+enum QualityPreference {
+    Auto,
+    Height(u32),
+}
+
+fn parse_quality_preference(value: Option<&str>) -> QualityPreference {
+    match value {
+        // Audio-only playback is handled client-side by rendering an <audio> element.
+        // Keep backend stream selection on standard video renditions.
+        Some(v) if v.eq_ignore_ascii_case("audio_only") => QualityPreference::Auto,
+        Some(v) => v
+            .parse::<u32>()
+            .map(QualityPreference::Height)
+            .unwrap_or(QualityPreference::Auto),
+        None => QualityPreference::Auto,
+    }
 }
 
 async fn stream_proxy(
@@ -501,7 +519,7 @@ async fn stream_proxy(
     Path(username): Path<String>,
     Query(query): Query<QualityQuery>,
 ) -> impl IntoResponse {
-    let _q = query.quality.unwrap_or(720);
+    let quality = parse_quality_preference(query.quality.as_deref());
     let device = uuid::Uuid::new_v4().to_string();
     let token_req = state.client.post("https://gql.twitch.tv/gql")
       .header("Client-Id", &state.client_id)
@@ -535,7 +553,54 @@ async fn stream_proxy(
             .into_response();
     }
     let url = format!("https://usher.ttvnw.net/api/channel/hls/{}.m3u8?player_type=pulsar&player_backend=mediaplayer&playlist_include_framerate=true&allow_source=true&transcode_mode=cbr_v1&cdm=wv&player_version=1.22.0&token={}&sig={}", username.to_lowercase(), urlencoding::encode(token), sig);
-    fetch_text(&state, &url, true).await
+    let list_text = match fetch_raw_text(&state, &url, true).await {
+        Ok(t) => t,
+        Err(r) => return r,
+    };
+
+    if matches!(quality, QualityPreference::Auto) {
+        return (
+            [(header::CONTENT_TYPE, "application/vnd.apple.mpegurl")],
+            list_text,
+        )
+            .into_response();
+    }
+
+    let selected_ref = select_playlist(&list_text, &quality).unwrap_or_default();
+    let selected = resolve_playlist_url(&url, &selected_ref);
+    if selected.is_empty() {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error":true,"data":null})),
+        )
+            .into_response();
+    }
+
+    let manifest = match fetch_raw_text(&state, &selected, true).await {
+        Ok(t) => t,
+        Err(r) => return r,
+    };
+
+    let base = selected.rsplit_once('/').map(|(prefix, _)| prefix).unwrap_or("");
+    let body = manifest
+        .lines()
+        .map(|line| {
+            if line.starts_with('#') || line.trim().is_empty() {
+                line.to_string()
+            } else if line.starts_with("http") {
+                line.to_string()
+            } else {
+                format!("{base}/{line}")
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    (
+        [(header::CONTENT_TYPE, "application/vnd.apple.mpegurl")],
+        body,
+    )
+        .into_response()
 }
 
 async fn vod_proxy(
@@ -543,7 +608,7 @@ async fn vod_proxy(
     Path(id): Path<String>,
     Query(query): Query<QualityQuery>,
 ) -> impl IntoResponse {
-    let quality = query.quality.unwrap_or(720);
+    let quality = parse_quality_preference(query.quality.as_deref());
     let token = gql(&state, json!({"query":"query PlaybackAccessToken_Template($login: String!, $isLive: Boolean!, $vodID: ID!, $isVod: Boolean!, $playerType: String!) { videoPlaybackAccessToken(id: $vodID, params: {platform: \"web\", playerBackend: \"mediaplayer\", playerType: $playerType}) @include(if: $isVod) { value signature } }","variables":{"isLive":false,"login":"","isVod":true,"vodID":id,"playerType":"site"}}), false).await;
     let Ok(token) = token else {
         return (
@@ -574,7 +639,8 @@ async fn vod_proxy(
         Ok(t) => t,
         Err(r) => return r,
     };
-    let selected = select_playlist(&list_text, quality).unwrap_or_default();
+    let selected_ref = select_playlist(&list_text, &quality).unwrap_or_default();
+    let selected = resolve_playlist_url(&playlist_url, &selected_ref);
     if selected.is_empty() {
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -608,31 +674,40 @@ async fn vod_proxy(
         .into_response()
 }
 
-fn select_playlist(manifest: &str, quality: u32) -> Option<String> {
+fn select_playlist(manifest: &str, quality: &QualityPreference) -> Option<String> {
     let lines: Vec<&str> = manifest.lines().collect();
-    for i in 0..lines.len().saturating_sub(1) {
-        if lines[i].contains("RESOLUTION=") && lines[i].contains(&format!("x{quality}")) {
-            let next = lines[i + 1].trim();
-            if next.starts_with("http") {
-                return Some(next.to_string());
+    match quality {
+        QualityPreference::Height(target_height) => {
+            for i in 0..lines.len().saturating_sub(1) {
+                if lines[i].contains("RESOLUTION=")
+                    && lines[i].contains(&format!("x{target_height}"))
+                {
+                    let next = lines[i + 1].trim();
+                    if next.starts_with("http") {
+                        return Some(next.to_string());
+                    }
+                }
             }
         }
+        QualityPreference::Auto => {}
     }
+
     lines
         .iter()
-        .find(|l| l.starts_with("http"))
-        .map(|x| x.to_string())
+        .find(|l| !l.trim().is_empty() && !l.starts_with('#'))
+        .map(|x| x.trim().to_string())
 }
 
-async fn fetch_text(state: &AppState, url: &str, mobile: bool) -> Response {
-    match fetch_raw_text(state, url, mobile).await {
-        Ok(text) => (
-            [(header::CONTENT_TYPE, "application/vnd.apple.mpegurl")],
-            text,
-        )
-            .into_response(),
-        Err(r) => r,
+fn resolve_playlist_url(source_url: &str, selected_ref: &str) -> String {
+    if selected_ref.is_empty() {
+        return String::new();
     }
+    if selected_ref.starts_with("http://") || selected_ref.starts_with("https://") {
+        return selected_ref.to_string();
+    }
+
+    let base = source_url.rsplit_once('/').map(|(prefix, _)| prefix).unwrap_or("");
+    format!("{base}/{selected_ref}")
 }
 
 async fn fetch_raw_text(state: &AppState, url: &str, mobile: bool) -> Result<String, Response> {
