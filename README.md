@@ -27,6 +27,7 @@ docker pull ghcr.io/gevroska/twinr:latest
 docker run --rm -p 3000:3000 \
   -e CLIENTID=kimne78kx3ncx6brgo4mv6wki5h1ko \
   -e USERAGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:149.0) Gecko/20100101 Firefox/149.0" \
+  -e OPUS_AUDIO_BITRATES=32,64,96 \
   ghcr.io/gevroska/twinr:latest
 ```
 
@@ -35,6 +36,7 @@ docker run --rm -p 3000:3000 \
 - `CLIENTID` (optional)
 - `USERAGENT` (optional)
 - `INSTANCE_URL` (optional, used for clip embed metadata)
+- `OPUS_AUDIO_BITRATES` (optional, comma-separated list like `32,64,96`; empty or `no` disables Opus audio transcoding options)
 
 
 ## Docker Compose
@@ -48,5 +50,6 @@ services:
     environment:
       - CLIENTID=kimne78kx3ncx6brgo4mv6wki5h1ko
       - USERAGENT=Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:149.0) Gecko/20100101 Firefox/149.0
+      - OPUS_AUDIO_BITRATES=32,64,96
     restart: unless-stopped
 ```

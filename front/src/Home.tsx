@@ -1,6 +1,7 @@
-import { Component, createSignal } from "solid-js";
+import { Component, For, createSignal, onMount } from "solid-js";
 import Nav from "./components/nav";
 import { useNavigate } from "@solidjs/router";
+import axios from "axios";
 
 const clipRegex = /(.+)?twitch\.tv\/\w+\/clip\/[\w-]+/,
   streamRegex = /(.+)?twitch\.tv\/(.+)/,
@@ -9,7 +10,43 @@ const clipRegex = /(.+)?twitch\.tv\/\w+\/clip\/[\w-]+/,
 const Home: Component = () => {
   const [inputVal, setInputVal] = createSignal(""),
     [selectedRes, setRes] = createSignal(""),
+    [opusAudioBitrates, setOpusAudioBitrates] = createSignal<number[]>([]),
     redirect = useNavigate();
+  const resolutionOptions = () => [
+    { value: "1080", label: "1920x1080" },
+    { value: "720", label: "1280x720" },
+    { value: "480", label: "852x480" },
+    { value: "360", label: "640x360" },
+    { value: "160", label: "284x160" },
+    { value: "audio_only", label: "Audio only" },
+    ...opusAudioBitrates().map((bitrate) => ({
+      value: `audio_opus_${bitrate}`,
+      label: `Audio only (Opus ${bitrate} kbps)`,
+    })),
+  ];
+
+  onMount(() => {
+    axios
+      .get(`${window.location.origin}/api`, {
+        headers: {
+          "Content-Type": "application/json",
+        },
+        validateStatus(status) {
+          return true;
+        },
+      })
+      .then((res) => {
+        const bitrates = Array.isArray(res.data?.opusAudioBitrates)
+          ? res.data.opusAudioBitrates
+              .map((item: unknown) => Number(item))
+              .filter((item: number) => Number.isFinite(item) && item > 0)
+          : [];
+        setOpusAudioBitrates(bitrates);
+      })
+      .catch((err) => {
+        console.warn("[Home] Failed to load Opus audio settings:", err);
+      });
+  });
 
   function resolveTargetPathFromUrl(rawInput: string): string | null {
     const formattedInput = rawInput.startsWith("http")
@@ -134,12 +171,11 @@ const Home: Component = () => {
                     <option disabled selected>
                       Resolution
                     </option>
-                    <option value="1080">1920x1080</option>
-                    <option value="720">1280x720</option>
-                    <option value="480">852x480</option>
-                    <option value="360">640x360</option>
-                    <option value="160">284x160</option>
-                    <option value="audio_only">Audio only</option>
+                    <For each={resolutionOptions()}>
+                      {(option) => (
+                        <option value={option.value}>{option.label}</option>
+                      )}
+                    </For>
                   </select>
                 </details>
 
