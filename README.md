@@ -21,11 +21,11 @@ Server runs on `http://localhost:3000`.
 ## Docker
 
 ```bash
-docker build -t twinr-rust .
+docker pull ghcr.io/gevroska/twinr:latest
 docker run --rm -p 3000:3000 \
   -e CLIENTID=kimne78kx3ncx6brgo4mv6wki5h1ko \
-  -e USERAGENT="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36" \
-  twinr-rust
+  -e USERAGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:149.0) Gecko/20100101 Firefox/149.0" \
+  ghcr.io/gevroska/twinr:latest
 ```
 
 ## Environment variables
@@ -33,3 +33,18 @@ docker run --rm -p 3000:3000 \
 - `CLIENTID` (optional)
 - `USERAGENT` (optional)
 - `INSTANCE_URL` (optional, used for clip embed metadata)
+
+
+## Docker Compose
+
+```yaml
+services:
+  twinr:
+    image: ghcr.io/gevroska/twinr:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - CLIENTID=kimne78kx3ncx6brgo4mv6wki5h1ko
+      - USERAGENT=Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:149.0) Gecko/20100101 Firefox/149.0
+    restart: unless-stopped
+```
