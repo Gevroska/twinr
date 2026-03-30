@@ -1,4 +1,5 @@
 use axum::{
+    body::Body,
     extract::{Path, Query, State, WebSocketUpgrade},
     http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{Html, IntoResponse, Response},
@@ -11,8 +12,11 @@ use rand::Rng;
 use reqwest::Client;
 use serde::Deserialize;
 use serde_json::{json, Value};
+use std::collections::BTreeSet;
 use std::{net::SocketAddr, sync::Arc};
 use tokio::fs;
+use tokio::process::Command;
+use tokio_util::io::ReaderStream;
 use tower_http::{cors::CorsLayer, services::ServeDir};
 
 #[derive(Clone)]
@@ -22,6 +26,7 @@ struct AppState {
     user_agent: String,
     base_url: Option<String>,
     version: String,
+    opus_audio_bitrates: Vec<u32>,
 }
 
 #[tokio::main]
@@ -34,6 +39,7 @@ async fn main() {
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36".to_string()
     });
     let base_url = std::env::var("INSTANCE_URL").ok();
+    let opus_audio_bitrates = parse_opus_audio_bitrates(std::env::var("OPUS_AUDIO_BITRATES").ok());
 
     let pkg: Value =
         serde_json::from_str(&std::fs::read_to_string("package.json").unwrap_or_default())
@@ -46,6 +52,7 @@ async fn main() {
         user_agent,
         base_url,
         version,
+        opus_audio_bitrates,
     });
 
     let app = Router::new()
@@ -137,7 +144,29 @@ async fn index_file() -> impl IntoResponse {
 }
 
 async fn api_root(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    Json(json!({"version": state.version, "api":"v0"}))
+    Json(
+        json!({"version": state.version, "api":"v0", "opusAudioBitrates": state.opus_audio_bitrates}),
+    )
+}
+
+fn parse_opus_audio_bitrates(raw: Option<String>) -> Vec<u32> {
+    let Some(value) = raw else {
+        return vec![];
+    };
+    let trimmed = value.trim();
+    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("no") {
+        return vec![];
+    }
+
+    let mut bitrates = BTreeSet::new();
+    for item in trimmed.split(',').map(str::trim).filter(|x| !x.is_empty()) {
+        if let Ok(v) = item.parse::<u32>() {
+            if v > 0 {
+                bitrates.insert(v);
+            }
+        }
+    }
+    bitrates.into_iter().collect()
 }
 
 async fn gql(state: &AppState, body: Value, mobile: bool) -> Result<Value, ()> {
@@ -499,19 +528,78 @@ struct QualityQuery {
 enum QualityPreference {
     Auto,
     Height(u32),
+    AudioOnly,
+    AudioOpus(u32),
 }
 
 fn parse_quality_preference(value: Option<&str>) -> QualityPreference {
     match value {
-        // Audio-only playback is handled client-side by rendering an <audio> element.
-        // Keep backend stream selection on standard video renditions.
-        Some(v) if v.eq_ignore_ascii_case("audio_only") => QualityPreference::Auto,
+        Some(v) if v.eq_ignore_ascii_case("audio_only") => QualityPreference::AudioOnly,
+        Some(v) if v.starts_with("audio_opus_") => v
+            .trim_start_matches("audio_opus_")
+            .parse::<u32>()
+            .map(QualityPreference::AudioOpus)
+            .unwrap_or(QualityPreference::Auto),
         Some(v) => v
             .parse::<u32>()
             .map(QualityPreference::Height)
             .unwrap_or(QualityPreference::Auto),
         None => QualityPreference::Auto,
     }
+}
+
+fn spawn_opus_transcode_response(source_url: &str, bitrate: u32) -> Response {
+    let mut cmd = Command::new("ffmpeg");
+    cmd.args([
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-nostdin",
+        "-i",
+        source_url,
+        "-vn",
+        "-c:a",
+        "libopus",
+        "-b:a",
+        &format!("{bitrate}k"),
+        "-vbr",
+        "on",
+        "-application",
+        "audio",
+        "-f",
+        "ogg",
+        "pipe:1",
+    ]);
+    cmd.stdout(std::process::Stdio::piped());
+    cmd.stderr(std::process::Stdio::null());
+
+    let Ok(mut child) = cmd.spawn() else {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error":true,"data":null})),
+        )
+            .into_response();
+    };
+    let Some(stdout) = child.stdout.take() else {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error":true,"data":null})),
+        )
+            .into_response();
+    };
+    tokio::spawn(async move {
+        let _ = child.wait().await;
+    });
+
+    let stream = ReaderStream::new(stdout);
+    (
+        [
+            (header::CONTENT_TYPE, "audio/ogg"),
+            (header::CACHE_CONTROL, "no-store"),
+        ],
+        Body::from_stream(stream),
+    )
+        .into_response()
 }
 
 async fn stream_proxy(
@@ -558,7 +646,31 @@ async fn stream_proxy(
         Err(r) => return r,
     };
 
-    if matches!(quality, QualityPreference::Auto) {
+    if let QualityPreference::AudioOpus(bitrate) = quality {
+        if !state.opus_audio_bitrates.contains(&bitrate) {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error":true,"message":"Requested opus bitrate is disabled"})),
+            )
+                .into_response();
+        }
+        let selected_ref =
+            select_playlist(&list_text, &QualityPreference::Auto).unwrap_or_default();
+        let selected = resolve_playlist_url(&url, &selected_ref);
+        if selected.is_empty() {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error":true,"data":null})),
+            )
+                .into_response();
+        }
+        return spawn_opus_transcode_response(&selected, bitrate);
+    }
+
+    if matches!(
+        quality,
+        QualityPreference::Auto | QualityPreference::AudioOnly
+    ) {
         return (
             [(header::CONTENT_TYPE, "application/vnd.apple.mpegurl")],
             list_text,
@@ -581,7 +693,10 @@ async fn stream_proxy(
         Err(r) => return r,
     };
 
-    let base = selected.rsplit_once('/').map(|(prefix, _)| prefix).unwrap_or("");
+    let base = selected
+        .rsplit_once('/')
+        .map(|(prefix, _)| prefix)
+        .unwrap_or("");
     let body = manifest
         .lines()
         .map(|line| {
@@ -639,6 +754,28 @@ async fn vod_proxy(
         Ok(t) => t,
         Err(r) => return r,
     };
+
+    if let QualityPreference::AudioOpus(bitrate) = quality {
+        if !state.opus_audio_bitrates.contains(&bitrate) {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error":true,"message":"Requested opus bitrate is disabled"})),
+            )
+                .into_response();
+        }
+        let selected_ref =
+            select_playlist(&list_text, &QualityPreference::Auto).unwrap_or_default();
+        let selected = resolve_playlist_url(&playlist_url, &selected_ref);
+        if selected.is_empty() {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error":true,"data":null})),
+            )
+                .into_response();
+        }
+        return spawn_opus_transcode_response(&selected, bitrate);
+    }
+
     let selected_ref = select_playlist(&list_text, &quality).unwrap_or_default();
     let selected = resolve_playlist_url(&playlist_url, &selected_ref);
     if selected.is_empty() {
@@ -689,7 +826,7 @@ fn select_playlist(manifest: &str, quality: &QualityPreference) -> Option<String
                 }
             }
         }
-        QualityPreference::Auto => {}
+        QualityPreference::Auto | QualityPreference::AudioOnly | QualityPreference::AudioOpus(_) => {}
     }
 
     lines
@@ -706,7 +843,10 @@ fn resolve_playlist_url(source_url: &str, selected_ref: &str) -> String {
         return selected_ref.to_string();
     }
 
-    let base = source_url.rsplit_once('/').map(|(prefix, _)| prefix).unwrap_or("");
+    let base = source_url
+        .rsplit_once('/')
+        .map(|(prefix, _)| prefix)
+        .unwrap_or("");
     format!("{base}/{selected_ref}")
 }
 
