@@ -1,6 +1,6 @@
 # Twinr
 
-Twinr is a privacy-focused alternative front-end to Twitch inspired by [Invidious](https://github.com/iv-org/invidious) and [Nitter](https://github.com/zedeus/nitter).
+Twinr is a privacy-focused alternative front-end to Twitch inspired by [Invidious](https://github.com/iv-org/invidious) and [Nitter](https://github.com/zedeus/nitter).  
 This project is a fork of Twineo by CloudyyUw:
 https://codeberg.org/CloudyyUw/twineo
 
