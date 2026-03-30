@@ -38,6 +38,7 @@ const Vods: Component = () => {
     >([]),
     [isDownloadSectionOpen, setIsDownloadSectionOpen] = createSignal(false),
     [loadingError, setLoadingError] = createSignal(""),
+    [opusAudioBitrates, setOpusAudioBitrates] = createSignal<number[]>([]),
     queryEntries = Object.keys(queryParams).filter(
       (key) =>
         typeof queryParams[key] !== "undefined" && queryParams[key] !== ""
@@ -69,6 +70,15 @@ const Vods: Component = () => {
     playbackListenerRef: ((ev: Event) => void) | undefined,
     chatRetryTimeout: number | undefined;
   const isAudioOnly = () => String(queryParams.quality || "") === "audio_only";
+  const isOpusAudioOnly = () =>
+    String(queryParams.quality || "").startsWith("audio_opus_");
+  const allResolutionOptions = () => [
+    ...resolutionOptions,
+    ...opusAudioBitrates().map((bitrate) => ({
+      value: `audio_opus_${bitrate}`,
+      label: `Audio only (Opus ${bitrate} kbps)`,
+    })),
+  ];
 
   if (!Hls.isSupported()) setHlsSuportStatus(false);
 
@@ -284,6 +294,14 @@ const Vods: Component = () => {
 
   createEffect(() => {
     if (isReady() == true && isValid() == true) {
+      if (isOpusAudioOnly()) {
+        if (hlsInstance) {
+          hlsInstance.destroy();
+        }
+        mediaRef.src = streamUrl;
+        void mediaRef.play();
+        return;
+      }
       initHlsStream();
     }
   });
@@ -301,6 +319,26 @@ const Vods: Component = () => {
   });
 
   fetchVodInfo();
+  axios
+    .get(`${instanceBaseUrl}/api`, {
+      headers: {
+        "Content-Type": "application/json",
+      },
+      validateStatus(status) {
+        return true;
+      },
+    })
+    .then((res) => {
+      const bitrates = Array.isArray(res.data?.opusAudioBitrates)
+        ? res.data.opusAudioBitrates
+            .map((item: unknown) => Number(item))
+            .filter((item: number) => Number.isFinite(item) && item > 0)
+        : [];
+      setOpusAudioBitrates(bitrates);
+    })
+    .catch((err) => {
+      console.warn("[Vod] Failed to load Opus audio settings:", err);
+    });
 
   const handleResolutionChange = (quality: string) => {
     const nextParams = { ...queryParams };
@@ -344,7 +382,7 @@ const Vods: Component = () => {
             <div class="mx-auto flex w-full max-w-7xl flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)] lg:items-start">
               <div class="w-full">
                 <Show
-                  when={isAudioOnly()}
+                  when={isAudioOnly() || isOpusAudioOnly()}
                   fallback={
                     <video
                       ref={mediaRef}
@@ -366,7 +404,7 @@ const Vods: Component = () => {
                       handleResolutionChange(e.currentTarget.value)
                     }
                   >
-                    <For each={resolutionOptions}>
+                    <For each={allResolutionOptions()}>
                       {(option) => (
                         <option value={option.value}>{option.label}</option>
                       )}
