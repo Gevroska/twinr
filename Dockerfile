@@ -26,7 +26,7 @@ COPY public ./public
 COPY --from=assets /app/public ./public
 COPY package.json ./package.json
 
-RUN cargo build --release
+RUN cargo test --release --locked && cargo build --release --locked
 
 FROM debian:bookworm-slim AS runtime
 WORKDIR /app
