@@ -42,7 +42,7 @@ const navBar: Component<{ isHome: boolean }> = ({ isHome }) => {
             </Show>
             <Show when={isHome == false}>
                 {/* desktop */}
-                <div class="hidden md:flex lg:flex">
+                <div class="watch-nav hidden md:flex lg:flex">
                     <div class="navbar sticky top-0 z-30 border-b border-base-200/70 bg-base-100/85 px-3 backdrop-blur-md">
                         <div class="navbar-start">
                             <div class="dropdown">
