@@ -4,6 +4,7 @@ import {
   For,
   Show,
   createEffect,
+  createMemo,
   createSignal,
   onCleanup,
   lazy,
@@ -24,7 +25,7 @@ const DownloadVods = lazy(() => import("./components/downloadVod"));
 
 const Vods: Component = () => {
   const instanceBaseUrl = window.location.origin,
-    [{ ...queryParams }, setQueryParams] = useSearchParams(),
+    [queryParams, setQueryParams] = useSearchParams(),
     { id } = useParams(),
     [isReady, setReadyStatus] = createSignal(false),
     [isValid, setValidStatus] = createSignal<boolean>(),
@@ -38,20 +39,17 @@ const Vods: Component = () => {
     >([]),
     [isDownloadSectionOpen, setIsDownloadSectionOpen] = createSignal(false),
     [loadingError, setLoadingError] = createSignal(""),
+    [playbackError, setPlaybackError] = createSignal(""),
     [opusAudioBitrates, setOpusAudioBitrates] = createSignal<number[]>([]),
-    queryEntries = Object.keys(queryParams).filter(
-      (key) =>
-        typeof queryParams[key] !== "undefined" && queryParams[key] !== ""
-    ),
-    queryString =
-      queryEntries.length > 0
-        ? `?${queryEntries
-            .map((key) => {
-              return `${key}=${queryParams[key]}`;
-            })
-            .join("&")}`
-        : "",
-    streamUrl = `${instanceBaseUrl}/api/vod/${id}${queryString}`,
+    queryString = createMemo(() => {
+      const params = new URLSearchParams();
+      Object.entries(queryParams).forEach(([key, value]) => {
+        if (value !== undefined && value !== "") params.set(key, String(value));
+      });
+      const query = params.toString();
+      return query ? `?${query}` : "";
+    }),
+    streamUrl = () => `${instanceBaseUrl}/api/vod/${id}${queryString()}`,
     isDownloadEnabled = import.meta.env.VITE_ENABLE_EXPERIMENTAL === "true",
     base64encode = (content: string) => btoa(content);
   const resolutionOptions = [
@@ -82,38 +80,45 @@ const Vods: Component = () => {
 
   if (!Hls.isSupported()) setHlsSuportStatus(false);
 
-  const initHlsStream = () => {
+  const playMedia = () => {
+    // Autoplay can be declined; the native Play button remains available.
+    void mediaRef.play().catch(() => {});
+  };
+
+  const initHlsStream = (url: string) => {
     if (Hls.isSupported()) {
       hlsInstance = new Hls({
         backBufferLength: 9,
-        liveSyncDuration: 9,
-        manifestLoadingMaxRetry: Infinity,
+        manifestLoadingMaxRetry: 3,
         manifestLoadingRetryDelay: 500,
       });
-
-      const retry = () => {
-        hlsInstance.attachMedia(mediaRef);
-        hlsInstance.loadSource(streamUrl);
-        hlsInstance.startLoad();
-      };
 
       hlsInstance.attachMedia(mediaRef);
 
       hlsInstance.on(Hls.Events.MEDIA_ATTACHED, () =>
-        hlsInstance.loadSource(streamUrl)
+        hlsInstance.loadSource(url)
       );
-      hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => mediaRef.play());
+      hlsInstance.on(Hls.Events.MANIFEST_PARSED, playMedia);
+      let recoveredMediaError = false;
       hlsInstance.on(Hls.Events.ERROR, function (_, data) {
         if (data.fatal) {
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
-              console.log("Network error. Retrying..");
-              retry();
+              hlsInstance.stopLoad();
+              setPlaybackError("Unable to load this VOD. Please refresh to try again.");
               break;
             case Hls.ErrorTypes.MEDIA_ERROR:
-              console.log("Media error. Retrying..");
-              hlsInstance.recoverMediaError();
+              if (!recoveredMediaError) {
+                recoveredMediaError = true;
+                hlsInstance.recoverMediaError();
+              } else {
+                hlsInstance.stopLoad();
+                setPlaybackError("Unable to play this VOD in your browser.");
+              }
               break;
+            default:
+              hlsInstance.stopLoad();
+              setPlaybackError("Unable to play this VOD. Please refresh to try again.");
           }
         }
       });
@@ -167,6 +172,7 @@ const Vods: Component = () => {
     }
 
     const comments = vodComments();
+    if (comments.length === 0) return;
     commentsStart = comments[0].offset;
     commentsEnd = comments[comments.length - 1].offset;
 
@@ -223,12 +229,7 @@ const Vods: Component = () => {
     if (playbackListenerRef) {
       mediaRef.removeEventListener("timeupdate", playbackListenerRef);
     }
-    if (playbackListenerRef) {
-      mediaRef.removeEventListener("timeupdate", playbackListenerRef);
-    }
-    if (playbackListenerRef) {
-      mediaRef.removeEventListener("timeupdate", playbackListenerRef);
-    }
+    playbackListenerRef = playbackListener;
     mediaRef.addEventListener("timeupdate", playbackListener);
   };
   async function fetchVodInfo() {
@@ -294,15 +295,15 @@ const Vods: Component = () => {
 
   createEffect(() => {
     if (isReady() == true && isValid() == true) {
+      const url = streamUrl();
+      setPlaybackError("");
+      if (hlsInstance) hlsInstance.destroy();
       if (isOpusAudioOnly()) {
-        if (hlsInstance) {
-          hlsInstance.destroy();
-        }
-        mediaRef.src = streamUrl;
-        void mediaRef.play();
+        mediaRef.src = url;
+        playMedia();
         return;
       }
-      initHlsStream();
+      initHlsStream(url);
     }
   });
 
@@ -341,10 +342,7 @@ const Vods: Component = () => {
     });
 
   const handleResolutionChange = (quality: string) => {
-    const nextParams = { ...queryParams };
-    if (quality.length < 1) delete nextParams.quality;
-    else nextParams.quality = quality;
-    setQueryParams(nextParams);
+    setQueryParams({ quality: quality || undefined });
   };
 
   return (
@@ -393,6 +391,9 @@ const Vods: Component = () => {
                 >
                   <audio ref={mediaRef} controls class="w-full" />
                 </Show>
+                <Show when={playbackError()}>
+                  <p role="alert" class="mt-2">{playbackError()}</p>
+                </Show>
                 <div class="mt-2">
                   <label class="label p-0">
                     <span class="label-text text-sm">Resolution</span>
@@ -417,7 +418,7 @@ const Vods: Component = () => {
                       <div class="mt-1 mb-2">
                         <DownloadVods
                           id={id}
-                          queryString={queryString}
+                          queryString={queryString()}
                           streamer={vodInfo()?.username!}
                           title={vodInfo()?.title!}
                         />
@@ -449,7 +450,7 @@ const Vods: Component = () => {
                   <span class="text-indigo-400">{vodInfo()?.game}</span>
                   <A
                     class="mt-1 flex flex-row space-x-1"
-                    href={`/${vodInfo()?.loginName}${queryString}`}
+                    href={`/${vodInfo()?.loginName}${queryString()}`}
                   >
                     <img
                       class="w-8 rounded-full"

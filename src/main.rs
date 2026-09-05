@@ -724,7 +724,7 @@ async fn vod_proxy(
     Query(query): Query<QualityQuery>,
 ) -> impl IntoResponse {
     let quality = parse_quality_preference(query.quality.as_deref());
-    let token = gql(&state, json!({"query":"query PlaybackAccessToken_Template($login: String!, $isLive: Boolean!, $vodID: ID!, $isVod: Boolean!, $playerType: String!) { videoPlaybackAccessToken(id: $vodID, params: {platform: \"web\", playerBackend: \"mediaplayer\", playerType: $playerType}) @include(if: $isVod) { value signature } }","variables":{"isLive":false,"login":"","isVod":true,"vodID":id,"playerType":"site"}}), false).await;
+    let token = gql(&state, vod_token_request(&id), false).await;
     let Ok(token) = token else {
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -740,7 +740,8 @@ async fn vod_proxy(
         .pointer("/data/videoPlaybackAccessToken/value")
         .and_then(|v| v.as_str())
         .unwrap_or("");
-    if sig.is_empty() {
+    if sig.is_empty() || val.is_empty() {
+        tracing::warn!(vod_id = %id, "Twitch did not return a VOD playback token");
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error":true,"data":null})),
@@ -789,8 +790,23 @@ async fn vod_proxy(
         Ok(t) => t,
         Err(r) => return r,
     };
-    let base = selected.split("index-dvr.m3u8").next().unwrap_or("");
-    let body = manifest
+    let body = proxy_vod_manifest(&selected, &manifest);
+    (
+        [(header::CONTENT_TYPE, "application/vnd.apple.mpegurl")],
+        body,
+    )
+        .into_response()
+}
+
+fn vod_token_request(id: &str) -> Value {
+    json!({
+        "query": "query VodPlaybackAccessToken($vodID: ID!, $playerType: String!) { videoPlaybackAccessToken(id: $vodID, params: {platform: \"web\", playerBackend: \"mediaplayer\", playerType: $playerType}) { value signature } }",
+        "variables": {"vodID": id, "playerType": "site"}
+    })
+}
+
+fn proxy_vod_manifest(source_url: &str, manifest: &str) -> String {
+    manifest
         .lines()
         .map(|line| {
             if line.starts_with('#') || line.trim().is_empty() {
@@ -798,17 +814,12 @@ async fn vod_proxy(
             } else {
                 format!(
                     "/api/proxy?url={}",
-                    STANDARD.encode(format!("{base}{line}"))
+                    urlencoding::encode(&STANDARD.encode(resolve_playlist_url(source_url, line.trim())))
                 )
             }
         })
         .collect::<Vec<_>>()
-        .join("\n");
-    (
-        [(header::CONTENT_TYPE, "application/vnd.apple.mpegurl")],
-        body,
-    )
-        .into_response()
+        .join("\n")
 }
 
 fn select_playlist(manifest: &str, quality: &QualityPreference) -> Option<String> {
@@ -839,15 +850,84 @@ fn resolve_playlist_url(source_url: &str, selected_ref: &str) -> String {
     if selected_ref.is_empty() {
         return String::new();
     }
-    if selected_ref.starts_with("http://") || selected_ref.starts_with("https://") {
-        return selected_ref.to_string();
+    reqwest::Url::parse(source_url)
+        .and_then(|base| base.join(selected_ref))
+        .map(|url| url.to_string())
+        .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod media_tests {
+    use super::*;
+
+    #[test]
+    fn vod_segments_resolve_for_muted_and_regular_playlists() {
+        for filename in ["index-dvr.m3u8", "index-muted-AC62XD2A6L.m3u8"] {
+            let source = format!("https://cdn.example/vod/chunked/{filename}?token=test");
+            let manifest = "#EXTM3U\n#EXTINF:10.0,\n0.ts\n#EXTINF:10.0,\n1-muted.ts\n#EXT-X-ENDLIST\n";
+            let rewritten = proxy_vod_manifest(&source, manifest);
+            let urls: Vec<String> = rewritten.lines().filter(|line| !line.starts_with('#'))
+                .map(|line| {
+                    let encoded = urlencoding::decode(line.strip_prefix("/api/proxy?url=").unwrap()).unwrap();
+                    String::from_utf8(STANDARD.decode(encoded.as_bytes()).unwrap()).unwrap()
+                }).collect();
+            assert_eq!(urls, ["https://cdn.example/vod/chunked/0.ts", "https://cdn.example/vod/chunked/1-muted.ts"]);
+            assert!(rewritten.contains("#EXT-X-ENDLIST"));
+        }
     }
 
-    let base = source_url
-        .rsplit_once('/')
-        .map(|(prefix, _)| prefix)
-        .unwrap_or("");
-    format!("{base}/{selected_ref}")
+    #[test]
+    fn playlist_references_follow_url_resolution_rules() {
+        let source = "https://cdn.example/vod/chunked/index.m3u8?old=1";
+        for (reference, expected) in [
+            ("../audio/0.ts", "https://cdn.example/vod/audio/0.ts"),
+            ("/shared/0.ts?x=1&y=2", "https://cdn.example/shared/0.ts?x=1&y=2"),
+            ("https://other.example/0.ts", "https://other.example/0.ts"),
+            ("//other.example/0.ts", "https://other.example/0.ts"),
+            ("", ""),
+        ] {
+            assert_eq!(resolve_playlist_url(source, reference), expected);
+        }
+    }
+
+    #[tokio::test]
+    async fn media_proxy_forwards_first_chunk_before_upstream_finishes() {
+        let (release, wait) = tokio::sync::oneshot::channel::<()>();
+        let wait = Arc::new(tokio::sync::Mutex::new(Some(wait)));
+        let app = Router::new().route("/segment", get(move || {
+            let wait = wait.clone();
+            async move {
+                let wait = wait.lock().await.take().unwrap();
+                let chunks = futures::stream::once(async { Ok::<_, std::io::Error>("first") })
+                    .chain(futures::stream::once(async move {
+                        let _ = wait.await;
+                        Ok::<_, std::io::Error>("last")
+                    }));
+                ([(header::CONTENT_TYPE, "video/mp2t")], Body::from_stream(chunks))
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let state = AppState {
+            client: Client::new(), client_id: String::new(), user_agent: "test".into(),
+            base_url: None, version: "test".into(), opus_audio_bitrates: vec![],
+        };
+        let response = tokio::time::timeout(std::time::Duration::from_secs(2),
+            pipe_url(&state, &format!("http://{address}/segment"), "", ""))
+            .await.expect("proxy must return before the upstream body completes");
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers()[header::CONTENT_TYPE], "video/mp2t");
+        let mut body = response.into_body().into_data_stream();
+        let first = tokio::time::timeout(std::time::Duration::from_secs(2), body.next())
+            .await.unwrap().unwrap().unwrap();
+        assert_eq!(&first[..], b"first");
+        release.send(()).unwrap();
+        let last = body.next().await.unwrap().unwrap();
+        assert_eq!(&last[..], b"last");
+        assert!(body.next().await.is_none());
+        server.abort();
+    }
 }
 
 async fn fetch_raw_text(state: &AppState, url: &str, mobile: bool) -> Result<String, Response> {
@@ -968,14 +1048,18 @@ async fn pipe_url(state: &AppState, url: &str, referer: &str, origin: &str) -> R
         .cloned()
         .unwrap_or(HeaderValue::from_static("application/octet-stream"));
     let cc = resp.headers().get(header::CACHE_CONTROL).cloned();
-    let bytes = resp.bytes().await.unwrap_or_default();
 
     let mut out_headers = HeaderMap::new();
     out_headers.insert(header::CONTENT_TYPE, ct);
     if let Some(ccv) = cc {
         out_headers.insert(header::CACHE_CONTROL, ccv);
     }
-    (status, out_headers, bytes).into_response()
+    // Forward chunks as they arrive, with downstream backpressure, instead of
+    // retaining an entire segment (or clip) before sending its first byte.
+    let stream = futures::stream::try_unfold(resp, |mut response| async move {
+        response.chunk().await.map(|chunk| chunk.map(|bytes| (bytes, response)))
+    });
+    (status, out_headers, Body::from_stream(stream)).into_response()
 }
 
 #[derive(Deserialize)]
