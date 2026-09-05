@@ -376,16 +376,16 @@ const Vods: Component = () => {
           </div>
         </Show>
         <Show when={isValid() == true}>
-          <div class="container mx-auto px-4 py-3 md:py-5">
-            <div class="mx-auto flex w-full max-w-7xl flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)] lg:items-start">
-              <div class="w-full">
+          <div class="watch-page">
+            <div class="watch-layout">
+              <div class="watch-column">
                 <Show
                   when={isAudioOnly() || isOpusAudioOnly()}
                   fallback={
                     <video
                       ref={mediaRef}
                       controls
-                      class="w-full rounded-md"
+                      class="watch-video"
                     />
                   }
                 >
@@ -394,7 +394,7 @@ const Vods: Component = () => {
                 <Show when={playbackError()}>
                   <p role="alert" class="mt-2">{playbackError()}</p>
                 </Show>
-                <div class="mt-2">
+                <div class="watch-quality">
                   <label class="label p-0">
                     <span class="label-text text-sm">Resolution</span>
                   </label>
@@ -412,7 +412,7 @@ const Vods: Component = () => {
                     </For>
                   </select>
                 </div>
-                <div class="p-1">
+                <div class="watch-metadata">
                   {isDownloadEnabled == true ? (
                     <Show when={isDownloadSectionOpen() == true}>
                       <div class="mt-1 mb-2">
@@ -463,11 +463,11 @@ const Vods: Component = () => {
                   </A>
                 </div>
               </div>
-              <div class="w-full">
-                <div class="border border-base-200 rounded-md shadow-md p-4 w-auto">
+              <div class="watch-chat">
+                <div class="watch-chat-panel">
                   <h2 class="text-xl">Chat</h2>
                   <div
-                    class="mt-3 h-72 md:h-96 lg:h-[70vh] overflow-auto break-words"
+                    class="watch-chat-messages"
                     style={{
                       "scrollbar-width": "thin",
                     }}

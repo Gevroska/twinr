@@ -424,22 +424,22 @@ const Stream: Component = () => {
           </div>
         </Show>
         <Show when={isLive() == true}>
-          <div class="container mx-auto px-4 py-3 md:py-5">
-            <div class="mx-auto flex w-full max-w-7xl flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)] lg:items-start">
-              <div class="w-full">
+          <div class="watch-page">
+            <div class="watch-layout">
+              <div class="watch-column">
                 <Show
                   when={isAudioOnly() || isOpusAudioOnly()}
                   fallback={
                     <video
                       ref={mediaRef}
                       controls
-                      class="w-full rounded-md"
+                      class="watch-video"
                     />
                   }
                 >
                   <audio ref={mediaRef} controls class="w-full" />
                 </Show>
-                <div class="mt-2">
+                <div class="watch-quality">
                   <label class="label p-0">
                     <span class="label-text text-sm">Resolution</span>
                   </label>
@@ -457,7 +457,7 @@ const Stream: Component = () => {
                     </For>
                   </select>
                 </div>
-                <div class="p-1">
+                <div class="watch-metadata">
                   <LiveMetadata
                     title={streamMetadata()?.title!}
                     views={streamMetadata()?.views!}
@@ -469,12 +469,12 @@ const Stream: Component = () => {
                   />
                 </div>
               </div>
-              <div class="w-full">
-                <div class="border border-base-200 rounded-md shadow-md p-4 w-auto">
+              <div class="watch-chat">
+                <div class="watch-chat-panel">
                   <h2 class="text-xl">Chat</h2>
-                  <div class="p-1">
+                  <div class="watch-chat-body">
                     <div
-                      class="mt-3 h-72 md:h-96 lg:h-[70vh] overflow-auto break-words"
+                      class="watch-chat-messages"
                       style={{
                         "scrollbar-width": "thin",
                       }}
