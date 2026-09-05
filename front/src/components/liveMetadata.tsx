@@ -30,8 +30,8 @@ const liveMetadata: Component<{
                 <div>
                     <span class="text-indigo-400 italic">{game}</span>
                 </div>
-                {/* streamer */}
-                <div class="flex flex-wrap justify-between">
+            {/* streamer */}
+                <div class="watch-channel-row flex flex-wrap justify-between items-center">
                     <div class="w-full sm:w-auto mb-4 sm:mb-0">
                         <div class="inline-flex items-center space-x-2">
                             <img class="w-8 rounded-full" src={avatar} />

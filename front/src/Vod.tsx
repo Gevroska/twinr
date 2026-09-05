@@ -451,7 +451,7 @@ const Vods: Component = () => {
                   </h2>
                   <span class="text-indigo-400">{vodInfo()?.game}</span>
                   <A
-                    class="mt-1 flex flex-row space-x-1"
+                    class="watch-channel-row mt-1 flex flex-row space-x-1"
                     href={`/${vodInfo()?.loginName}${queryString()}`}
                   >
                     <img
