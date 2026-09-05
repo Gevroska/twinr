@@ -12,6 +12,99 @@ body {
     min-height: 100vh;
 }
 
+/* Shared theater layout for live streams and recordings. */
+.watch-page {
+    width: 100%;
+    padding-bottom: 4rem;
+}
+
+.watch-layout,
+.watch-column,
+.watch-chat {
+    min-width: 0;
+}
+
+.watch-video {
+    display: block;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    object-fit: contain;
+    background: #000;
+    border-radius: 0;
+}
+
+.watch-quality {
+    padding: 0.75rem 1rem 0;
+}
+
+.watch-metadata {
+    padding: 0.75rem 1rem 1rem;
+    overflow-wrap: anywhere;
+}
+
+.watch-chat {
+    height: 60vh;
+    height: 60dvh;
+}
+
+.watch-chat-panel,
+.watch-chat-body {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    height: 100%;
+}
+
+.watch-chat-panel {
+    background: hsl(var(--b1));
+    border-left: 1px solid hsl(var(--b3));
+}
+
+.watch-chat-panel > h2 {
+    flex: none;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid hsl(var(--b3));
+}
+
+.watch-chat-body,
+.watch-chat-messages {
+    flex: 1;
+    min-height: 0;
+}
+
+.watch-chat-messages {
+    padding: 0.75rem 1rem;
+    overflow: auto;
+    overflow-wrap: anywhere;
+}
+
+@media (min-width: 768px) {
+    .watch-page {
+        padding-bottom: 0;
+    }
+
+    .watch-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) clamp(280px, 25vw, 380px);
+        align-items: start;
+    }
+
+    .watch-video,
+    .watch-chat {
+        height: calc(100vh - 4rem);
+        height: calc(100dvh - 4rem);
+    }
+
+    .watch-video {
+        aspect-ratio: auto;
+    }
+
+    .watch-chat {
+        position: sticky;
+        top: 0;
+    }
+}
+
 footer {
     position: fixed;
     bottom: 0;
