@@ -60,6 +60,32 @@ body {
     overflow-wrap: anywhere;
 }
 
+.watch-details {
+    flex: none;
+}
+
+.watch-details-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 0.75rem 1rem;
+    text-align: left;
+}
+
+.watch-details-toggle:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: -2px;
+}
+
+.watch-details-content {
+    display: none;
+}
+
+.watch-details-content[data-expanded="true"] {
+    display: block;
+}
+
 .watch-chat {
     flex: 1 0 6rem;
 }
@@ -96,6 +122,14 @@ body {
 }
 
 @media (min-width: 768px) {
+    .watch-details-toggle {
+        display: none;
+    }
+
+    .watch-details-content {
+        display: block;
+    }
+
     .watch-page {
         inset: 4rem 0 0;
     }

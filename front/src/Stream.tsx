@@ -12,6 +12,7 @@ import { useSearchParams, useParams } from "@solidjs/router";
 import axios from "axios";
 import Hls from "hls.js";
 import Nav from "./components/nav";
+import WatchDetails from "./components/watchDetails";
 import FavBtn from "./components/favCh";
 import LiveMetadata from "./components/liveMetadata";
 import {
@@ -457,6 +458,7 @@ const Stream: Component = () => {
                     </For>
                   </select>
                 </div>
+                <WatchDetails>
                 <div class="watch-metadata">
                   <LiveMetadata
                     title={streamMetadata()?.title!}
@@ -468,6 +470,7 @@ const Stream: Component = () => {
                     username={params.username}
                   />
                 </div>
+                </WatchDetails>
               </div>
               <div class="watch-chat">
                 <div class="watch-chat-panel">
