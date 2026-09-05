@@ -18,6 +18,7 @@ import {
   vodCommentsDataApiResponse,
 } from "./utils/types";
 import Nav from "./components/nav";
+import WatchDetails from "./components/watchDetails";
 import { BiSolidDownload, BiRegularX } from "solid-icons/bi";
 import genericResponseObject from "../../src/types/genericResponseObject";
 
@@ -412,6 +413,7 @@ const Vods: Component = () => {
                     </For>
                   </select>
                 </div>
+                <WatchDetails>
                 <div class="watch-metadata">
                   {isDownloadEnabled == true ? (
                     <Show when={isDownloadSectionOpen() == true}>
@@ -462,6 +464,7 @@ const Vods: Component = () => {
                     <span class="ml-1">{vodInfo()?.username}</span>
                   </A>
                 </div>
+                </WatchDetails>
               </div>
               <div class="watch-chat">
                 <div class="watch-chat-panel">
