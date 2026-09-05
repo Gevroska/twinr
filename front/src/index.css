@@ -15,24 +15,22 @@ body {
 /* Shared theater layout for live streams and recordings. */
 .watch-nav {
     position: fixed;
-    right: 0;
-    bottom: 0;
+    right: calc(clamp(280px, 25vw, 380px) + 1rem);
+    bottom: 0.5rem;
     z-index: 30;
-    width: clamp(280px, 25vw, 380px);
-    height: 2.5rem;
+    width: 4rem;
+    height: 2rem;
     align-items: center;
     justify-content: flex-end;
-    padding: 0 0.5rem;
-    background: hsl(var(--b1));
-    border-top: 1px solid hsl(var(--b3));
+    padding: 0;
 }
 
 .watch-nav a {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 2.5rem;
-    height: 2.5rem;
+    width: 2rem;
+    height: 2rem;
 }
 
 .watch-nav a:hover,
@@ -152,7 +150,7 @@ body {
 @media (min-width: 768px) {
     .watch-quality {
         position: absolute;
-        right: 1rem;
+        right: 6rem;
         bottom: 0.5rem;
         display: flex;
         align-items: center;
@@ -165,7 +163,7 @@ body {
     }
 
     .watch-channel-row {
-        padding-right: 18rem;
+        padding-right: 23rem;
     }
 
     .watch-details-toggle {
@@ -189,10 +187,6 @@ body {
     .watch-column,
     .watch-chat {
         height: 100%;
-    }
-
-    .watch-chat {
-        padding-bottom: 2.5rem;
     }
 
     .watch-video {
