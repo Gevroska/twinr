@@ -33,6 +33,7 @@ body {
 }
 
 .watch-column {
+    position: relative;
     display: flex;
     flex-direction: column;
     flex: 0 1 auto;
@@ -122,6 +123,24 @@ body {
 }
 
 @media (min-width: 768px) {
+    .watch-quality {
+        position: absolute;
+        right: 1rem;
+        bottom: 0.5rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0;
+    }
+
+    .watch-quality select {
+        width: 180px;
+    }
+
+    .watch-channel-row {
+        padding-right: 18rem;
+    }
+
     .watch-details-toggle {
         display: none;
     }
