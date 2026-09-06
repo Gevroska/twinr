@@ -11,7 +11,7 @@ import {
 } from "solid-js";
 import { useSearchParams, useParams } from "@solidjs/router";
 import axios from "axios";
-import Hls from "hls.js";
+import { loadInstanceSettings } from "./utils/instanceSettings.mjs";
 import Nav from "./components/nav";
 import WatchDetails from "./components/watchDetails";
 import ChatHeader from "./components/chatHeader";
@@ -30,6 +30,8 @@ const ClipsContainer = lazy(() => import("./components/clipsContainer")),
   StreamChat = lazy(() => import("./components/streamChat"));
 
 const Stream: Component = () => {
+  const requests = new AbortController();
+  let metadataRetry: number | undefined;
   const [mobileNavOpen, setMobileNavOpen] = createSignal(false);
   const instanceBaseUrl = window.location.origin,
     [queryParams, setQueryParams] = useSearchParams(),
@@ -52,6 +54,7 @@ const Stream: Component = () => {
     [opusAudioBitrates, setOpusAudioBitrates] = createSignal<number[]>([]),
     queryLimit = 100,
     requestConfig = {
+      signal: requests.signal,
       headers: {
         "Content-Type": "application/json",
       },
@@ -89,9 +92,8 @@ const Stream: Component = () => {
     })),
   ];
 
-  if (!Hls.isSupported()) setHlsSuportStatus(false);
-
   const fetchStreamerInfo = async (retryCount: number = 0) => {
+    if (requests.signal.aborted) return;
     try {
       setLoadingError("");
       const req = await axios.get(
@@ -99,6 +101,7 @@ const Stream: Component = () => {
           requestConfig
         ),
         data = req.data as streamStatusResponse & { valid?: boolean };
+      if (requests.signal.aborted) return;
 
       if (req.status >= 500) throw new Error("Channel metadata is temporarily unavailable");
 
@@ -110,6 +113,7 @@ const Stream: Component = () => {
           ),
           streamerMetadataRes =
             streamerMetadataReq.data as streamerMetadataResponse;
+        if (requests.signal.aborted) return;
 
         if (streamerMetadataRes.invalid !== true) {
           setStreamerMetadata(streamerMetadataRes);
@@ -130,6 +134,7 @@ const Stream: Component = () => {
     } catch (err) {
       const isCanceledError =
         axios.isAxiosError(err) && err.code === "ERR_CANCELED";
+      if (requests.signal.aborted || isCanceledError) return;
 
       if (retryCount < 3) {
         const delay = 500 * (retryCount + 1);
@@ -139,7 +144,7 @@ const Stream: Component = () => {
           }. Retrying in ${delay}ms.`,
           err
         );
-        window.setTimeout(() => fetchStreamerInfo(retryCount + 1), delay);
+        metadataRetry = window.setTimeout(() => fetchStreamerInfo(retryCount + 1), delay);
         return;
       }
 
@@ -166,19 +171,7 @@ const Stream: Component = () => {
     }
 
     fetchStreamerInfo();
-    axios
-      .get(`${instanceBaseUrl}/api`, requestConfig)
-      .then((res) => {
-        const bitrates = Array.isArray(res.data?.opusAudioBitrates)
-          ? res.data.opusAudioBitrates
-              .map((item: unknown) => Number(item))
-              .filter((item: number) => Number.isFinite(item) && item > 0)
-          : [];
-        setOpusAudioBitrates(bitrates);
-      })
-      .catch((err) => {
-        console.warn("[Stream] Failed to load Opus audio settings:", err);
-      });
+    loadInstanceSettings().then(setOpusAudioBitrates).catch(() => {});
   });
 
   const handleResolutionChange = (quality: string) => {
@@ -187,16 +180,15 @@ const Stream: Component = () => {
 
   // updating metadata every 1 minute
   const streamMetadataUpdater = setInterval(async () => {
-    if (isLive() == true) {
+    if (isLive() == true && !requests.signal.aborted) {
       try {
-        console.log("[Log] Updating stream metadata.");
         const req = await axios.get(
             `${instanceBaseUrl}/api/streaminfo/${params.username}`,
             requestConfig
           ),
           data = req.data as streamStatusResponse;
 
-        if (data.invalid !== true) {
+        if (!requests.signal.aborted && data.invalid !== true) {
           setStreamMetadata(data);
         }
       } catch (err) {
@@ -205,46 +197,35 @@ const Stream: Component = () => {
     }
   }, 60000);
 
-  // tabs handler
-  createEffect(async () => {
-    try {
-      if (visibleTab() == "videos") {
-        const req = await axios.get(
-            `${instanceBaseUrl}/api/vods/${
-              params.username
-            }/${videosFilter()}/${queryLimit}`
-          ),
-          data = req.data as vodsResponse;
-
-        if (data.invalid !== true) {
-          setVisibleTabData(data);
-        }
-      }
-      if (visibleTab() == "clips") {
-        const req = await axios.get(
-            `${instanceBaseUrl}/api/clips/${
-              params.username
-            }/${clipsFilter()}/${queryLimit}`
-          ),
-          data = req.data as clipsResponse;
-
-        if (data.invalid !== true) {
-          setVisibleTabData(data);
-          setCliplistReadyStatus(true);
-        }
-      }
-    } catch (err) {
-      console.error("[Stream] Failed to fetch tab data:", err);
-    }
+  // Cancel the previous filter request; stale replies must not replace the active tab.
+  createEffect(() => {
+    const tab = visibleTab();
+    if (tab !== "videos" && tab !== "clips") return;
+    const filter = tab === "videos" ? videosFilter() : clipsFilter();
+    const request = new AbortController();
+    onCleanup(() => request.abort());
+    const endpoint = tab === "videos" ? "vods" : "clips";
+    void axios.get(`${instanceBaseUrl}/api/${endpoint}/${params.username}/${filter}/${queryLimit}`, {
+      signal: request.signal, timeout: 15000,
+    }).then(({ data }) => {
+      if (request.signal.aborted || data.invalid === true) return;
+      setVisibleTabData(data);
+      if (tab === "videos") setVodlistReadyStatus(true);
+      else setCliplistReadyStatus(true);
+    }).catch(err => {
+      if (!request.signal.aborted) console.error("[Stream] Failed to fetch tab data:", err);
+    });
   });
 
   onCleanup(() => {
+    requests.abort();
+    clearTimeout(metadataRetry);
     clearInterval(streamMetadataUpdater);
     clearTimeout(loadingWatchdog);
   });
 
   createWatchPlayer(() => isReady() && isLive(), () => mediaRef,
-    `${instanceBaseUrl}/api/stream/${params.username}`, () => String(queryParams.quality || ""), setLoadingError);
+    `${instanceBaseUrl}/api/stream/${params.username}`, () => String(queryParams.quality || ""), setLoadingError, setHlsSuportStatus);
 
   return (
     <>

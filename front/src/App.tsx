@@ -1,12 +1,13 @@
 import type { Component } from "solid-js";
+import { lazy, Suspense, ErrorBoundary } from "solid-js";
 import { Route, Routes } from "@solidjs/router";
 
 import Home from "./Home";
-import Stream from "./Stream";
-import Clips from "./Clips";
-import Vod from "./Vod";
-import Favorites from "./Favorites";
-import Settings from "./Settings";
+const Stream = lazy(() => import("./Stream"));
+const Clips = lazy(() => import("./Clips"));
+const Vod = lazy(() => import("./Vod"));
+const Favorites = lazy(() => import("./Favorites"));
+const Settings = lazy(() => import("./Settings"));
 import Nav from "./components/nav";
 
 const NotFound: Component = () => {
@@ -25,6 +26,8 @@ const NotFound: Component = () => {
 
 const App: Component = () => {
   return (
+    <ErrorBoundary fallback={<p role="alert" class="p-4">Unable to load this page. Please refresh and try again.</p>}>
+    <Suspense fallback={<p role="status" class="p-4">Loading...</p>}>
     <Routes>
       <Route path="/" component={Home} />
       <Route path="/favorites" component={Favorites} />
@@ -34,6 +37,8 @@ const App: Component = () => {
       <Route path="/:username" component={Stream} />
       <Route path="*" component={NotFound} />
     </Routes>
+    </Suspense>
+    </ErrorBoundary>
   );
 };
 

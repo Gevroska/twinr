@@ -9,7 +9,7 @@ import {
   lazy,
 } from "solid-js";
 import axios from "axios";
-import Hls from "hls.js";
+import { loadInstanceSettings } from "./utils/instanceSettings.mjs";
 import ChatMessage from "./components/chatMessage";
 import {
   vodCommentsApiResponse,
@@ -26,6 +26,7 @@ import { BiSolidDownload, BiRegularX } from "solid-icons/bi";
 const DownloadVods = lazy(() => import("./components/downloadVod"));
 
 const Vods: Component = () => {
+  const requests = new AbortController();
   const [mobileNavOpen, setMobileNavOpen] = createSignal(false);
   const instanceBaseUrl = window.location.origin,
     [queryParams, setQueryParams] = useSearchParams(),
@@ -78,7 +79,6 @@ const Vods: Component = () => {
     })),
   ];
 
-  if (!Hls.isSupported()) setHlsSuportStatus(false);
 
   let chatDisposed = false;
   let commentRequest = 0;
@@ -89,14 +89,14 @@ const Vods: Component = () => {
     const request = ++commentRequest;
     commentsLoading = true;
     try {
-      const response = await axios.get(`${instanceBaseUrl}/api/vodinfo/comments/${id}/${Math.floor(offset)}?format=fragments`);
+      const response = await axios.get(`${instanceBaseUrl}/api/vodinfo/comments/${id}/${Math.floor(offset)}?format=fragments`, { signal: requests.signal, timeout: 15000 });
       if (chatDisposed || request !== commentRequest) return;
       const data = response.data as vodCommentsApiResponse;
       const comments = data.data || [];
       setVodComments(comments);
       commentEnd = comments.length ? comments[comments.length - 1].offset : offset + 30;
     } catch {
-      commentEnd = offset + 5;
+      if (!chatDisposed && request === commentRequest) commentEnd = offset + 5;
     } finally {
       if (request === commentRequest) commentsLoading = false;
     }
@@ -105,13 +105,14 @@ const Vods: Component = () => {
     void fetchComments(0);
     playbackListenerRef = () => {
       const time = mediaRef.currentTime;
+      // A timeupdate burst after seeking must not issue duplicate requests.
+      if (commentsLoading) return;
       if (Math.abs(time - lastChatTime) > 5 && lastChatTime >= 0) {
         setChatMessages([]);
         void fetchComments(time);
         lastChatTime = time - 1;
         return;
       }
-      if (commentsLoading) return;
       const comments = vodComments().filter(item => item.offset > lastChatTime && item.offset <= time);
       if (comments.length) {
         const follow = scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < 80;
@@ -127,6 +128,8 @@ const Vods: Component = () => {
     try {
       setLoadingError("");
       const req = await axios.get(`${instanceBaseUrl}/api/vodinfo/${id}`, {
+          signal: requests.signal,
+          timeout: 15000,
           headers: {
             "Content-Type": "application/json",
           },
@@ -135,6 +138,7 @@ const Vods: Component = () => {
           },
         }),
         data: vodsApiResponse & { valid?: boolean } = req.data;
+      if (requests.signal.aborted) return;
 
       if (req.status !== 200 || data.invalid == true || data.valid == false) {
         setLoadingError(
@@ -150,6 +154,7 @@ const Vods: Component = () => {
       setReadyStatus(true);
       initChat();
     } catch (err) {
+      if (requests.signal.aborted) return;
       console.error("[Vod] Failed to load VOD info:", err);
       setLoadingError(
         "Unable to load VOD details right now. Please refresh and try again."
@@ -161,6 +166,7 @@ const Vods: Component = () => {
 
   onCleanup(() => {
     chatDisposed = true;
+    requests.abort();
 
     if (playbackListenerRef && mediaRef) {
       mediaRef.removeEventListener("timeupdate", playbackListenerRef);
@@ -169,7 +175,7 @@ const Vods: Component = () => {
   });
 
   createWatchPlayer(() => isReady() && isValid() === true, () => mediaRef,
-    `${instanceBaseUrl}/api/vod/${id}`, () => String(queryParams.quality || ""), setPlaybackError);
+    `${instanceBaseUrl}/api/vod/${id}`, () => String(queryParams.quality || ""), setPlaybackError, setHlsSuportStatus);
 
   const loadingWatchdog = window.setTimeout(() => {
     if (isReady() == false) {
@@ -184,26 +190,7 @@ const Vods: Component = () => {
   });
 
   fetchVodInfo();
-  axios
-    .get(`${instanceBaseUrl}/api`, {
-      headers: {
-        "Content-Type": "application/json",
-      },
-      validateStatus(status) {
-        return true;
-      },
-    })
-    .then((res) => {
-      const bitrates = Array.isArray(res.data?.opusAudioBitrates)
-        ? res.data.opusAudioBitrates
-            .map((item: unknown) => Number(item))
-            .filter((item: number) => Number.isFinite(item) && item > 0)
-        : [];
-      setOpusAudioBitrates(bitrates);
-    })
-    .catch((err) => {
-      console.warn("[Vod] Failed to load Opus audio settings:", err);
-    });
+  loadInstanceSettings().then(setOpusAudioBitrates).catch(() => {});
 
   const handleResolutionChange = (quality: string) => {
     setQueryParams({ quality: quality || undefined });

@@ -1,4 +1,4 @@
-import { Component, createSignal, For, Show } from 'solid-js';
+import { Component, createSignal, For, Show, onCleanup } from 'solid-js';
 import axios from 'axios';
 import { normalizeFavorites } from './utils/favorites.mjs';
 
@@ -6,6 +6,8 @@ import Nav from './components/nav';
 import { VsSync } from 'solid-icons/vs';
 
 const FavoritesPage: Component = () => {
+    const request = new AbortController();
+    onCleanup(() => request.abort());
     const [loadError,setLoadError] = createSignal('');
     const [isReady, setIsReady] = createSignal(false),
         [isPopupClosed, closePopup] = createSignal(true),
@@ -54,12 +56,13 @@ const FavoritesPage: Component = () => {
         }
 
         try {
-            for (let index=0;index<channels.length;index+=100) {
-                const response=await axios.post(`${baseUrl}/api/users`,{usernames:channels.slice(index,index+100)});
+            for (let index=0;index<channels.length && !request.signal.aborted;index+=100) {
+                const response=await axios.post(`${baseUrl}/api/users`,{usernames:channels.slice(index,index+100)}, { signal: request.signal });
+                if (request.signal.aborted) return;
                 setChannelsMetadata(previous=>[...previous,...response.data.data]);
                 if (response.data.failed?.length) setLoadError('Some channels could not be loaded. Please refresh to retry.');
             }
-        } catch { setLoadError('Favorites could not be loaded. Please refresh to retry.'); }
+        } catch { if (!request.signal.aborted) setLoadError('Favorites could not be loaded. Please refresh to retry.'); }
         finally { setIsReady(true); }
     })();
     return (
@@ -161,7 +164,7 @@ const FavoritesPage: Component = () => {
                                     >
                                         <div class="flex flex-col w-full lg:flex-row space-x-1 md:space-x-4 bg-base-100 p-4 rounded-md bg-opacity-50 backdrop-blur-md">
                                             <div class="flex flex-col space-y-2 items-center justify-center">
-                                                <img
+                                                <img loading="lazy" decoding="async"
                                                     class="rounded-full w-20"
                                                     src={`${baseUrl}/api/proxy?url=${btoa(
                                                         channel.avatar

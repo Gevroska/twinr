@@ -1,7 +1,7 @@
 import { Component, For, createSignal, onMount } from "solid-js";
 import Nav from "./components/nav";
 import { useNavigate } from "@solidjs/router";
-import axios from "axios";
+import { loadInstanceSettings } from "./utils/instanceSettings.mjs";
 
 const clipRegex = /(.+)?twitch\.tv\/\w+\/clip\/[\w-]+/,
   streamRegex = /(.+)?twitch\.tv\/(.+)/,
@@ -26,26 +26,7 @@ const Home: Component = () => {
   ];
 
   onMount(() => {
-    axios
-      .get(`${window.location.origin}/api`, {
-        headers: {
-          "Content-Type": "application/json",
-        },
-        validateStatus(status) {
-          return true;
-        },
-      })
-      .then((res) => {
-        const bitrates = Array.isArray(res.data?.opusAudioBitrates)
-          ? res.data.opusAudioBitrates
-              .map((item: unknown) => Number(item))
-              .filter((item: number) => Number.isFinite(item) && item > 0)
-          : [];
-        setOpusAudioBitrates(bitrates);
-      })
-      .catch((err) => {
-        console.warn("[Home] Failed to load Opus audio settings:", err);
-      });
+    loadInstanceSettings().then(setOpusAudioBitrates).catch(() => {});
   });
 
   function resolveTargetPathFromUrl(rawInput: string): string | null {
