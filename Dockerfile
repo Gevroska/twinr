@@ -18,6 +18,7 @@ RUN node --test front/src/utils/*.test.mjs && npm run build:assets
 
 FROM rust:1.87-slim AS builder
 WORKDIR /app
+RUN rustup component add rustfmt
 
 COPY Cargo.toml Cargo.lock* ./
 COPY src ./src
