@@ -87,45 +87,37 @@ pub(crate) async fn streamer_info(
     ([(header::CACHE_CONTROL, "max-age=3600")], Json(data)).into_response()
 }
 
+pub(crate) async fn vod_details(
+    state: &AppState,
+    id: &str,
+) -> Result<Value, crate::errors::AppError> {
+    gql(state,json!({"query":"query TwinrVodMetadata($id: ID!) { video(id: $id) { title game { name } owner { login displayName profileImageURL(width: 70) } } }","variables":{"id":id}}),false).await
+}
 pub(crate) async fn vod_info(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
-) -> impl IntoResponse {
+) -> Response {
     if !crate::security::vod_id(&id) {
         return crate::errors::AppError::InvalidInput.into_response();
     }
-    let meta = gql(
-        &state,
-        json!({"operationName":"ComscoreStreamingQuery","variables":{"channel":"","clipSlug":"","isClip":false,"isLive":false,"isVodOrCollection":true,"vodID":id},"extensions":{"persistedQuery":{"version":1,"sha256Hash":"e1edae8122517d013405f237ffcc124515dc6ded82480a88daef69c83b53ac01"}}}),
-        false,
-    );
-    let name = gql(
-        &state,
-        json!({"operationName":"VodChannelLoginQuery","variables":{"videoID":id},"extensions":{"persistedQuery":{"version":1,"sha256Hash":"0c5feea4dad2565508828f16e53fe62614edf015159df4b3bca33423496ce78e"}}}),
-        false,
-    );
-    let (meta, name) = tokio::join!(meta, name);
-    let (Ok(meta), Ok(name)) = (meta, name) else {
+    let data = match vod_details(&state, &id).await {
+        Ok(v) => v,
+        Err(e) => return e.into_response(),
+    };
+    let Some(video) = data.pointer("/data/video").filter(|v| !v.is_null()) else {
         return invalid().into_response();
     };
-    let login = name
-        .pointer("/data/video/owner/login")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    if login.is_empty() {
-        return invalid().into_response();
-    }
-    let avatar = gql(&state, json!({"operationName":"ChannelShell","variables":{"login":login},"extensions":{"persistedQuery":{"version":1,"sha256Hash":"580ab410bcd0c1ad194224957ae2241e5d252b2c5173d8e0cce9d32d5bb14efe"}}}), false).await;
-    let Ok(avatar) = avatar else {
-        return invalid().into_response();
-    };
-    ([(header::CACHE_CONTROL, "max-age=3600")], Json(json!({
-      "game": meta.pointer("/data/video/game/name").cloned().unwrap_or(json!("")),
-      "avatar": avatar.pointer("/data/userOrError/profileImageURL").cloned().unwrap_or(json!("")),
-      "title": meta.pointer("/data/video/title").cloned().unwrap_or(json!("")),
-      "username": meta.pointer("/data/video/owner/displayName").cloned().unwrap_or(json!("")),
-      "loginName": login
-    }))).into_response()
+    (
+        [(header::CACHE_CONTROL, "max-age=300")],
+        Json(json!({
+           "game":video.pointer("/game/name").cloned().unwrap_or(json!("")),
+           "avatar":video.pointer("/owner/profileImageURL").cloned().unwrap_or(json!("")),
+           "title":video.get("title").cloned().unwrap_or(json!("")),
+           "username":video.pointer("/owner/displayName").cloned().unwrap_or(json!("")),
+           "loginName":video.pointer("/owner/login").cloned().unwrap_or(json!(""))
+        })),
+    )
+        .into_response()
 }
 
 pub(crate) async fn vod_comments(
