@@ -6,6 +6,8 @@ Twinr is a privacy-focused alternative frontend to Twitch, inspired by [Invidiou
 
 The production server is Rust (Axum, Tokio, Reqwest); SolidJS owns the UI. Legacy TypeScript server files are not part of the Docker runtime.
 
+Production JavaScript and CSS are minified; hashed assets are immutable-cacheable.
+
 - `main.rs`: configuration and server startup.
 - `config.rs`, `state.rs`, `errors.rs`: validated configuration, shared connection pool/semaphores and application errors.
 - `twitch.rs`, `cache.rs`, `metadata.rs`: bounded Twitch requests, single-flight metadata cache and API handlers. Independent requests run concurrently; dependent requests such as emotes by channel ID remain sequential.
