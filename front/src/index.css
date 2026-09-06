@@ -216,5 +216,5 @@ footer {
 .watch-video.watch-audio { flex: none; height: 54px; aspect-ratio: auto; }
 @media (max-width: 767px) {
     .watch-page[data-nav-open="true"] { bottom: 4rem; }
-    .watch-chat-heading button { display: inline-flex; }
+    .watch-chat-heading button { display: inline-flex; margin-left: auto; }
 }
