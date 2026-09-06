@@ -33,6 +33,8 @@ const favBtn: Component<{ username: string }> = ({ username }) => {
         <>
             <button
                 class="btn btn-secondary btn-circle btn-sm"
+                aria-label={favChs().includes(username.toLowerCase()) ? "Remove from favorites" : "Add to favorites"}
+                aria-pressed={favChs().includes(username.toLowerCase())}
                 onclick={() => addOrRemoveFav(username.toLowerCase())}
             >
                 {favChs().includes(username.toLowerCase()) ? (

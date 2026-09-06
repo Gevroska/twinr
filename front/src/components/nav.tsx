@@ -2,12 +2,12 @@ import { Component, Show } from 'solid-js';
 import { FiMenu, FiHome, FiHeart } from 'solid-icons/fi';
 import { useNavigate } from '@solidjs/router';
 
-const navBar: Component<{ isHome: boolean }> = ({ isHome }) => {
+const navBar: Component<{ isHome: boolean; mobileOpen?: boolean }> = (props) => {
     const navigate = useNavigate();
 
     return (
         <>
-            <Show when={isHome == true}>
+            <Show when={props.isHome == true}>
                 <div class="navbar sticky top-0 z-30 border-b border-base-200/70 bg-base-100/85 px-3 backdrop-blur-md">
                     <div class="navbar-start">
                         <div class="dropdown">
@@ -40,23 +40,25 @@ const navBar: Component<{ isHome: boolean }> = ({ isHome }) => {
                     </div>
                 </div>
             </Show>
-            <Show when={isHome == false}>
+            <Show when={props.isHome == false}>
                 {/* desktop */}
                 <nav class="watch-nav hidden md:flex" aria-label="Navigation">
                     <a href="/" aria-label="Home" title="Home"><FiHome /></a>
                     <a href="/favorites" aria-label="Favorites" title="Favorites"><FiHeart /></a>
                 </nav>
                 {/* mobile */}
-                <div class="fixed z-30 md:hidden lg:hidden">
+                <Show when={props.mobileOpen !== false}>
+                <div id="watch-mobile-navigation" class="fixed z-30 md:hidden lg:hidden">
                     <div class="btm-nav border-t border-base-200 bg-base-100">
-                        <button onclick={() => navigate('/')}>
+                        <button aria-label="Home" onclick={() => navigate('/')}>
                             <FiHome />
                         </button>
-                        <button onclick={() => navigate('/favorites')}>
+                        <button aria-label="Favorites" onclick={() => navigate('/favorites')}>
                             <FiHeart />
                         </button>
                     </div>
                 </div>
+                </Show>
             </Show>
         </>
     );
