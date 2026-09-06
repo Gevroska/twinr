@@ -24,7 +24,6 @@
         "daisyui": "^3.1.5",
         "dompurify": "^3.0.6",
         "hls.js": "^1.4.6",
-        "m3u8-parser": "^7.0.0",
         "postcss": "^8.4.24",
         "solid-icons": "^1.0.11",
         "solid-js": "^1.7.6",

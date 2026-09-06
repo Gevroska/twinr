@@ -26,7 +26,7 @@ COPY public ./public
 COPY --from=assets /app/public ./public
 COPY package.json ./package.json
 
-RUN cargo test --release --locked && cargo build --release --locked
+RUN cargo fmt --check && cargo test --release --locked && cargo build --release --locked
 
 FROM debian:bookworm-slim AS runtime
 WORKDIR /app
@@ -39,4 +39,5 @@ COPY --from=builder /app/templates ./templates
 COPY --from=builder /app/package.json ./package.json
 
 EXPOSE 3000
+USER 65532:65532
 CMD ["/usr/local/bin/twinr"]
