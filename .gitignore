@@ -1,0 +1,8 @@
+node_modules/
+/front/dist/
+/target/
+/public/assets/
+/public/index.html
+/public/styles.min.css
+.env
+.env.*

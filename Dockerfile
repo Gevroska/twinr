@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM node:20-slim AS assets
+FROM node:24-bookworm-slim AS assets
 WORKDIR /app
 
 COPY package.json package-lock.json* postcss.config.js tailwind.config.js ./
@@ -11,7 +11,7 @@ COPY front/package.json front/package-lock.json ./front/
 COPY front/src ./front/src
 COPY front/assets ./front/assets
 COPY front/index.html ./front/index.html
-COPY front/postcss.config.js front/tailwind.config.js front/vite.config.ts front/tsconfig.json ./front/
+COPY front/postcss.config.js front/tailwind.config.js front/vite.config.mts front/tsconfig.json ./front/
 
 RUN npm ci
 RUN node --test front/src/utils/*.test.mjs && npm run build:assets
