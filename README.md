@@ -29,7 +29,7 @@ The cache defaults to 2,048 entries, with a separate 32 MiB serialized-payload b
 
 Opus selects Twitch's native audio-only rendition before starting FFmpeg; it falls back to a video-containing rendition only when no audio-only variant exists. Available bitrates are explicitly configured.
 
-VOD downloads use `GET /api/vod/:id/download?quality=720` (also source/default or `audio_only`). FFmpeg stream-copies tracks into a fragmented MP4 (`-c copy`). The response starts as soon as output is available and includes a sanitized title/ID filename. No complete VOD is buffered in server or browser RAM, and no temporary VOD file is written. Progress/cancellation belongs to the browser download manager. Existing download UI availability remains unchanged.
+VOD downloads use `GET /api/vod/:id/download?quality=720` (also source/default or `audio_only`). FFmpeg stream-copies tracks into a fragmented MP4 (`-c copy`), using `aac_adtstoasc` to convert Twitch AAC framing without re-encoding. The response starts as soon as output is available and includes a sanitized title/ID filename. No complete VOD is buffered in server or browser RAM, and no temporary VOD file is written. Progress/cancellation belongs to the browser download manager. Existing download UI availability remains unchanged.
 
 Downloads share the FFmpeg limit with Opus. Capacity exhaustion returns HTTP 503 with `Retry-After: 5`; the server does not create an unbounded queue. Disconnects/failures kill and reap the child before releasing its permit. Startup has a 30-second deadline and output stalls have a 60-second deadline. Reverse proxies should disable response buffering and permit long-lived streaming responses.
 
