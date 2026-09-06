@@ -5,12 +5,13 @@
     "scripts": {
         "start": "vite",
         "dev": "vite",
-        "build": "vite build",
+        "build": "tsc --noEmit --skipLibCheck && vite build",
         "serve": "vite preview"
     },
     "license": "MIT",
     "devDependencies": {
         "@types/dompurify": "^3.0.4",
+        "@types/node": "^20.19.43",
         "solid-devtools": "^0.27.3",
         "typescript": "^5.1.3",
         "vite": "^4.3.9",

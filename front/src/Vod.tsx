@@ -3,7 +3,6 @@ import {
   Component,
   For,
   Show,
-  createEffect,
   createMemo,
   createSignal,
   onCleanup,
@@ -11,20 +10,23 @@ import {
 } from "solid-js";
 import axios from "axios";
 import Hls from "hls.js";
-import dompurify from "dompurify";
+import ChatMessage from "./components/chatMessage";
 import {
   vodCommentsApiResponse,
   vodsApiResponse,
   vodCommentsDataApiResponse,
 } from "./utils/types";
+import FavBtn from "./components/favCh";
 import Nav from "./components/nav";
 import WatchDetails from "./components/watchDetails";
+import ChatHeader from "./components/chatHeader";
+import { createWatchPlayer } from "./utils/watchPlayer";
 import { BiSolidDownload, BiRegularX } from "solid-icons/bi";
-import genericResponseObject from "../../src/types/genericResponseObject";
 
 const DownloadVods = lazy(() => import("./components/downloadVod"));
 
 const Vods: Component = () => {
+  const [mobileNavOpen, setMobileNavOpen] = createSignal(false);
   const instanceBaseUrl = window.location.origin,
     [queryParams, setQueryParams] = useSearchParams(),
     { id } = useParams(),
@@ -50,7 +52,6 @@ const Vods: Component = () => {
       const query = params.toString();
       return query ? `?${query}` : "";
     }),
-    streamUrl = () => `${instanceBaseUrl}/api/vod/${id}${queryString()}`,
     isDownloadEnabled = import.meta.env.VITE_ENABLE_EXPERIMENTAL === "true",
     base64encode = (content: string) => btoa(content);
   const resolutionOptions = [
@@ -63,11 +64,9 @@ const Vods: Component = () => {
     { value: "audio_only", label: "Audio only" },
   ];
 
-  let hlsInstance: Hls,
-    mediaRef: HTMLMediaElement,
-    scroll: HTMLDivElement,
-    playbackListenerRef: ((ev: Event) => void) | undefined,
-    chatRetryTimeout: number | undefined;
+  let mediaRef!: HTMLVideoElement;
+  let scroll!: HTMLDivElement;
+  let playbackListenerRef: ((ev: Event) => void) | undefined;
   const isAudioOnly = () => String(queryParams.quality || "") === "audio_only";
   const isOpusAudioOnly = () =>
     String(queryParams.quality || "").startsWith("audio_opus_");
@@ -81,158 +80,49 @@ const Vods: Component = () => {
 
   if (!Hls.isSupported()) setHlsSuportStatus(false);
 
-  const playMedia = () => {
-    // Autoplay can be declined; the native Play button remains available.
-    void mediaRef.play().catch(() => {});
-  };
-
-  const initHlsStream = (url: string) => {
-    if (Hls.isSupported()) {
-      hlsInstance = new Hls({
-        backBufferLength: 9,
-        manifestLoadingMaxRetry: 3,
-        manifestLoadingRetryDelay: 500,
-      });
-
-      hlsInstance.attachMedia(mediaRef);
-
-      hlsInstance.on(Hls.Events.MEDIA_ATTACHED, () =>
-        hlsInstance.loadSource(url)
-      );
-      hlsInstance.on(Hls.Events.MANIFEST_PARSED, playMedia);
-      let recoveredMediaError = false;
-      hlsInstance.on(Hls.Events.ERROR, function (_, data) {
-        if (data.fatal) {
-          switch (data.type) {
-            case Hls.ErrorTypes.NETWORK_ERROR:
-              hlsInstance.stopLoad();
-              setPlaybackError("Unable to load this VOD. Please refresh to try again.");
-              break;
-            case Hls.ErrorTypes.MEDIA_ERROR:
-              if (!recoveredMediaError) {
-                recoveredMediaError = true;
-                hlsInstance.recoverMediaError();
-              } else {
-                hlsInstance.stopLoad();
-                setPlaybackError("Unable to play this VOD in your browser.");
-              }
-              break;
-            default:
-              hlsInstance.stopLoad();
-              setPlaybackError("Unable to play this VOD. Please refresh to try again.");
-          }
-        }
-      });
-    }
-  };
-
-  function sanitizeEvalMessage(content: string) {
-    return <span innerHTML={dompurify.sanitize(content)}></span>;
-  }
-
+  let chatDisposed = false;
+  let commentRequest = 0;
+  let lastChatTime = -1;
+  let commentEnd = -1;
+  let commentsLoading = false;
   const fetchComments = async (offset: number) => {
-    const req = await axios.get(
-        `${instanceBaseUrl}/api/vodinfo/comments/${id}/${offset}`,
-        {
-          headers: {
-            "Content-Type": "application/json",
-          },
-          validateStatus(status) {
-            return true;
-          },
-        }
-      ),
-      data: vodCommentsApiResponse = req.data;
-
-    if (data.invalid == true || data.valid == false) {
-      return false;
+    const request = ++commentRequest;
+    commentsLoading = true;
+    try {
+      const response = await axios.get(`${instanceBaseUrl}/api/vodinfo/comments/${id}/${Math.floor(offset)}?format=fragments`);
+      if (chatDisposed || request !== commentRequest) return;
+      const data = response.data as vodCommentsApiResponse;
+      const comments = data.data || [];
+      setVodComments(comments);
+      commentEnd = comments.length ? comments[comments.length - 1].offset : offset + 30;
+    } catch {
+      commentEnd = offset + 5;
+    } finally {
+      if (request === commentRequest) commentsLoading = false;
     }
-    setVodComments((prev) => [...prev, ...data.data!]);
-    return true;
   };
-  async function initChat(
-    offset: number = 0,
-    emoteList: {
-      id: string;
-      token: string;
-      url: string;
-    }[]
-  ) {
-    let commentsStart = 0,
-      commentsEnd = 0,
-      latestItem: number;
-    const fetchCommentsRes = await fetchComments(offset);
-
-    if (fetchCommentsRes == false) {
-      // retry after 1s
-      chatRetryTimeout = window.setTimeout(
-        () => initChat(offset, emoteList),
-        1000
-      );
-      return;
-    }
-
-    const comments = vodComments();
-    if (comments.length === 0) return;
-    commentsStart = comments[0].offset;
-    commentsEnd = comments[comments.length - 1].offset;
-
-    console.log(
-      `[Log] Chat info\nInit offset: ${commentsStart}\nEnd offset: ${commentsEnd}`
-    );
-    console.log(`[Log] Loaded ${emoteList.length} emotes.`);
-
-    function playbackListener() {
-      const time = Math.round(mediaRef.currentTime);
-      if (latestItem == time || time < commentsStart) return;
-
-      latestItem = time;
-
-      // load more comments
-      if (time == commentsEnd || time > commentsEnd) {
-        mediaRef.removeEventListener("timeupdate", playbackListener);
-        initChat(time > commentsEnd ? time : commentsEnd, emoteList);
+  function initChat() {
+    void fetchComments(0);
+    playbackListenerRef = () => {
+      const time = mediaRef.currentTime;
+      if (Math.abs(time - lastChatTime) > 5 && lastChatTime >= 0) {
+        setChatMessages([]);
+        void fetchComments(time);
+        lastChatTime = time - 1;
         return;
       }
-      const selectedComments = comments.filter((x) => x.offset == time);
-
-      if (selectedComments.length < 1) return;
-
-      selectedComments.forEach((message) => {
-        if (emoteList.length > 0) {
-          const hasEmote = emoteList.some((em) =>
-            message.message.includes(em.token)
-          );
-
-          if (hasEmote) {
-            const emoteByToken = emoteList.filter((em) =>
-              message.message?.includes(em.token)
-            );
-
-            message.emote = true;
-            emoteByToken.map((em) => {
-              message.message = message.message?.replace(
-                new RegExp(`${em?.token}`, "g"),
-                `<img class="inline-flex items-center" src="${em?.url}" alt="${em.token}" height="20" width="20" />`
-              );
-            });
-          }
-        }
-
-        const length = comments.length;
-        if (length > 1000) {
-          setChatMessages([...comments.splice(0, length - 1000), message]);
-        } else setChatMessages((prev) => [...prev, message]);
-      });
-
-      scroll.scrollTop = scroll.scrollHeight;
-    }
-    if (playbackListenerRef) {
-      mediaRef.removeEventListener("timeupdate", playbackListenerRef);
-    }
-    playbackListenerRef = playbackListener;
-    mediaRef.addEventListener("timeupdate", playbackListener);
-  };
+      if (commentsLoading) return;
+      const comments = vodComments().filter(item => item.offset > lastChatTime && item.offset <= time);
+      if (comments.length) {
+        const follow = scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < 80;
+        setChatMessages(previous => [...previous, ...comments].slice(-1000));
+        if (follow) scroll.scrollTop = scroll.scrollHeight;
+      }
+      lastChatTime = time;
+      if (time >= commentEnd) void fetchComments(time);
+    };
+    mediaRef.addEventListener("timeupdate", playbackListenerRef);
+  }
   async function fetchVodInfo() {
     try {
       setLoadingError("");
@@ -255,21 +145,10 @@ const Vods: Component = () => {
         return;
       }
 
-      const emoteListReq = await axios.get(
-          `${instanceBaseUrl}/api/emotes/${data.loginName}`
-        ),
-        emoteListData: genericResponseObject<
-          {
-            id: string;
-            token: string;
-            url: string;
-          }[]
-        > = emoteListReq.data;
-
       setVodInfo(data);
       setValidStatus(true);
       setReadyStatus(true);
-      initChat(0, emoteListData.data || []);
+      initChat();
     } catch (err) {
       console.error("[Vod] Failed to load VOD info:", err);
       setLoadingError(
@@ -281,32 +160,16 @@ const Vods: Component = () => {
   }
 
   onCleanup(() => {
-    if (hlsInstance) {
-      hlsInstance.destroy();
-    }
+    chatDisposed = true;
 
     if (playbackListenerRef && mediaRef) {
       mediaRef.removeEventListener("timeupdate", playbackListenerRef);
     }
 
-    if (chatRetryTimeout) {
-      clearTimeout(chatRetryTimeout);
-    }
   });
 
-  createEffect(() => {
-    if (isReady() == true && isValid() == true) {
-      const url = streamUrl();
-      setPlaybackError("");
-      if (hlsInstance) hlsInstance.destroy();
-      if (isOpusAudioOnly()) {
-        mediaRef.src = url;
-        playMedia();
-        return;
-      }
-      initHlsStream(url);
-    }
-  });
+  createWatchPlayer(() => isReady() && isValid() === true, () => mediaRef,
+    `${instanceBaseUrl}/api/vod/${id}`, () => String(queryParams.quality || ""), setPlaybackError);
 
   const loadingWatchdog = window.setTimeout(() => {
     if (isReady() == false) {
@@ -348,7 +211,7 @@ const Vods: Component = () => {
 
   return (
     <>
-      <Nav isHome={false} />
+      <Nav isHome={false} mobileOpen={mobileNavOpen()} />
       <Show when={isHlsSupported() == false}>
         <div class="container mx-auto my-auto px-10 py-2">
           <div class="border p-2 rounded-md shadow-md border-base-200">
@@ -377,21 +240,10 @@ const Vods: Component = () => {
           </div>
         </Show>
         <Show when={isValid() == true}>
-          <div class="watch-page">
+          <div class="watch-page" data-nav-open={mobileNavOpen()}>
             <div class="watch-layout">
               <div class="watch-column">
-                <Show
-                  when={isAudioOnly() || isOpusAudioOnly()}
-                  fallback={
-                    <video
-                      ref={mediaRef}
-                      controls
-                      class="watch-video"
-                    />
-                  }
-                >
-                  <audio ref={mediaRef} controls class="w-full" />
-                </Show>
+                <video ref={mediaRef} controls playsinline class="watch-video" classList={{"watch-audio": isAudioOnly() || isOpusAudioOnly()}} />
                 <Show when={playbackError()}>
                   <p role="alert" class="mt-2">{playbackError()}</p>
                 </Show>
@@ -450,8 +302,8 @@ const Vods: Component = () => {
                     )}
                   </h2>
                   <span class="text-indigo-400">{vodInfo()?.game}</span>
-                  <A
-                    class="watch-channel-row mt-1 flex flex-row space-x-1"
+                  <div class="watch-channel-row mt-1 flex items-center gap-2"><A
+                    class="flex items-center gap-1"
                     href={`/${vodInfo()?.loginName}${queryString()}`}
                   >
                     <img
@@ -462,13 +314,13 @@ const Vods: Component = () => {
                       )}`}
                     />
                     <span class="ml-1">{vodInfo()?.username}</span>
-                  </A>
+                  </A><FavBtn username={vodInfo()?.loginName || ""} /></div>
                 </div>
                 </WatchDetails>
               </div>
               <div class="watch-chat">
                 <div class="watch-chat-panel">
-                  <h2 class="text-xl">Chat</h2>
+                  <ChatHeader expanded={mobileNavOpen()} toggle={() => setMobileNavOpen(v => !v)} />
                   <div
                     class="watch-chat-messages"
                     style={{
@@ -487,11 +339,7 @@ const Vods: Component = () => {
                             {item.username}
                           </span>
                           :{" "}
-                          {item.emote === true ? (
-                            sanitizeEvalMessage(item.message)
-                          ) : (
-                            <span>{item.message}</span>
-                          )}
+                          <ChatMessage fragments={item.fragments} message={item.message} />
                         </div>
                       )}
                     </For>

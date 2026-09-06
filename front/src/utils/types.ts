@@ -79,6 +79,7 @@ export interface vodCommentsApiResponse {
         offset: number;
         username: string;
         message: string;
+        fragments?: {text: string; emoteId?: string | null}[];
         color: string;
     }[];
 }
@@ -87,7 +88,7 @@ export interface vodCommentsDataApiResponse {
     offset: number;
     username: string;
     message: string;
-    emote?: boolean;
+    fragments?: {text: string; emoteId?: string | null}[];
     color: string;
 }
 

@@ -72,6 +72,7 @@ async fn main() {
         .route("/clipproxy/:media/:sig/:token", get(clip_proxy))
         .route("/api/urlproxy", get(urlproxy))
         .route("/api/proxy", get(proxy))
+        .route("/api/playlist", get(playlist_proxy))
         .route("/videos/:id", get(index_file))
         .route("/:username/clip/:id", get(clip_page_or_index))
         .route("/:username", get(index_file))
@@ -129,11 +130,28 @@ async fn chat_socket(stream: axum::extract::ws::WebSocket) {
         .await;
     let _ = sender.send(Message::Text("OK".into())).await;
 
-    while let Some(Ok(msg)) = tw_recv.next().await {
-        if let tokio_tungstenite::tungstenite::Message::Text(text) = msg {
-            let _ = sender.send(Message::Text(text.to_string())).await;
+    loop {
+        tokio::select! {
+            incoming = tw_recv.next() => {
+                let Some(Ok(msg)) = incoming else { break; };
+                if let tokio_tungstenite::tungstenite::Message::Text(text) = msg {
+                    for line in text.lines().filter(|line| line.starts_with("PING ")) {
+                        let pong = line.replacen("PING", "PONG", 1);
+                        if tw_send.send(tokio_tungstenite::tungstenite::Message::Text(pong.into())).await.is_err() { return; }
+                    }
+                    if sender.send(Message::Text(text.to_string())).await.is_err() { break; }
+                }
+            }
+            incoming = receiver.next() => {
+                match incoming {
+                    Some(Ok(Message::Ping(data))) => { if sender.send(Message::Pong(data)).await.is_err() { break; } }
+                    Some(Ok(Message::Close(_))) | None | Some(Err(_)) => break,
+                    _ => {}
+                }
+            }
         }
     }
+    let _ = tw_send.close().await;
 }
 
 async fn index_file() -> impl IntoResponse {
@@ -328,7 +346,8 @@ async fn vod_comments(
             Some(json!({
                 "offset": n.get("contentOffsetSeconds").cloned().unwrap_or(json!(0)),
                 "username": commenter,
-                "message": n.pointer("/message/fragments/0/text").cloned().unwrap_or(json!("")),
+                "message": n.pointer("/message/fragments").and_then(Value::as_array).map(|items| items.iter().filter_map(|f| f.get("text").and_then(Value::as_str)).collect::<String>()).unwrap_or_default(),
+                "fragments": n.pointer("/message/fragments").and_then(Value::as_array).map(|items| items.iter().map(|f| json!({"text": f.get("text").cloned().unwrap_or(json!("")), "emoteId": f.pointer("/emote/emoteID").cloned().unwrap_or(Value::Null)})).collect::<Vec<_>>()).unwrap_or_default(),
                 "color": n.pointer("/message/userColor").cloned().unwrap_or(json!("#FFFFF"))
             }))
         })
@@ -509,7 +528,7 @@ async fn emotes(
             .unwrap_or_default()
         {
             if let Some(id) = em.get("id").and_then(|v| v.as_str()) {
-                out.push(json!({"id":id,"token":em.get("token").cloned().unwrap_or(json!("")),"url":format!("/api/proxy?url={}", STANDARD.encode(format!("https://static-cdn.jtvnw.net/emoticons/v2/{id}/static/dark/2.0")))}));
+                out.push(json!({"id":id,"token":em.get("token").cloned().unwrap_or(json!("")),"url":format!("/api/proxy?url={}", STANDARD.encode(format!("https://static-cdn.jtvnw.net/emoticons/v2/{id}/default/dark/2.0")))}));
             }
         }
     }
@@ -669,11 +688,11 @@ async fn stream_proxy(
 
     if matches!(
         quality,
-        QualityPreference::Auto | QualityPreference::AudioOnly
+        QualityPreference::Auto
     ) {
         return (
             [(header::CONTENT_TYPE, "application/vnd.apple.mpegurl")],
-            list_text,
+            proxy_vod_manifest(&url, &list_text),
         )
             .into_response();
     }
@@ -693,23 +712,7 @@ async fn stream_proxy(
         Err(r) => return r,
     };
 
-    let base = selected
-        .rsplit_once('/')
-        .map(|(prefix, _)| prefix)
-        .unwrap_or("");
-    let body = manifest
-        .lines()
-        .map(|line| {
-            if line.starts_with('#') || line.trim().is_empty() {
-                line.to_string()
-            } else if line.starts_with("http") {
-                line.to_string()
-            } else {
-                format!("{base}/{line}")
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
+    let body = proxy_vod_manifest(&selected, &manifest);
 
     (
         [(header::CONTENT_TYPE, "application/vnd.apple.mpegurl")],
@@ -777,6 +780,10 @@ async fn vod_proxy(
         return spawn_opus_transcode_response(&selected, bitrate);
     }
 
+    if matches!(quality, QualityPreference::Auto) {
+        return ([(header::CONTENT_TYPE, "application/vnd.apple.mpegurl")], proxy_vod_manifest(&playlist_url, &list_text)).into_response();
+    }
+
     let selected_ref = select_playlist(&list_text, &quality).unwrap_or_default();
     let selected = resolve_playlist_url(&playlist_url, &selected_ref);
     if selected.is_empty() {
@@ -805,21 +812,36 @@ fn vod_token_request(id: &str) -> Value {
     })
 }
 
+fn manifest_proxy_url(source: &str, reference: &str, playlist: bool) -> String {
+    format!("/api/{}?url={}", if playlist { "playlist" } else { "proxy" },
+        urlencoding::encode(&STANDARD.encode(resolve_playlist_url(source, reference))))
+}
+
 fn proxy_vod_manifest(source_url: &str, manifest: &str) -> String {
-    manifest
-        .lines()
-        .map(|line| {
-            if line.starts_with('#') || line.trim().is_empty() {
-                line.to_string()
-            } else {
-                format!(
-                    "/api/proxy?url={}",
-                    urlencoding::encode(&STANDARD.encode(resolve_playlist_url(source_url, line.trim())))
-                )
+    let master = manifest.contains("#EXT-X-STREAM-INF:");
+    manifest.lines().map(|line| {
+        if !line.starts_with('#') && !line.trim().is_empty() {
+            return manifest_proxy_url(source_url, line.trim(), master);
+        }
+        if let Some(start) = line.find("URI=\"") {
+            let start = start + 5;
+            if let Some(length) = line[start..].find('"') {
+                let end = start + length;
+                let playlist = line.starts_with("#EXT-X-MEDIA:") || line.starts_with("#EXT-X-I-FRAME-STREAM-INF:") || line.starts_with("#EXT-X-RENDITION-REPORT:");
+                return format!("{}{}{}", &line[..start], manifest_proxy_url(source_url, &line[start..end], playlist), &line[end..]);
             }
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
+        }
+        line.to_string()
+    }).collect::<Vec<_>>().join("\n")
+}
+
+async fn playlist_proxy(State(state): State<Arc<AppState>>, Query(q): Query<UrlQ>) -> Response {
+    let decoded = q.url.and_then(|s| STANDARD.decode(s.replace(' ', "+")).ok()).and_then(|b| String::from_utf8(b).ok());
+    let Some(url) = decoded else { return (StatusCode::BAD_REQUEST, "Invalid playlist URL").into_response(); };
+    match fetch_raw_text(&state, &url, false).await {
+        Ok(manifest) => ([(header::CONTENT_TYPE, "application/vnd.apple.mpegurl"), (header::CACHE_CONTROL, "no-store")], proxy_vod_manifest(&url, &manifest)).into_response(),
+        Err(response) => response,
+    }
 }
 
 fn select_playlist(manifest: &str, quality: &QualityPreference) -> Option<String> {
@@ -827,17 +849,23 @@ fn select_playlist(manifest: &str, quality: &QualityPreference) -> Option<String
     match quality {
         QualityPreference::Height(target_height) => {
             for i in 0..lines.len().saturating_sub(1) {
-                if lines[i].contains("RESOLUTION=")
-                    && lines[i].contains(&format!("x{target_height}"))
+                if lines[i].split(',').filter_map(|attribute| attribute.strip_prefix("RESOLUTION=")).any(|resolution| resolution.rsplit_once('x').and_then(|(_, height)| height.parse::<u32>().ok()) == Some(*target_height))
                 {
                     let next = lines[i + 1].trim();
-                    if next.starts_with("http") {
+                    if !next.is_empty() && !next.starts_with('#') {
                         return Some(next.to_string());
                     }
                 }
             }
         }
-        QualityPreference::Auto | QualityPreference::AudioOnly | QualityPreference::AudioOpus(_) => {}
+        QualityPreference::AudioOnly => {
+            for pair in lines.windows(2) {
+                if pair[0].starts_with("#EXT-X-STREAM-INF:") && !pair[0].contains("RESOLUTION=") {
+                    return Some(pair[1].trim().to_string());
+                }
+            }
+        }
+        QualityPreference::Auto | QualityPreference::AudioOpus(_) => {}
     }
 
     lines
@@ -859,6 +887,26 @@ fn resolve_playlist_url(source_url: &str, selected_ref: &str) -> String {
 #[cfg(test)]
 mod media_tests {
     use super::*;
+
+    #[test]
+    fn adaptive_master_preserves_levels_and_proxies_nested_playlists() {
+        let source = "https://cdn.example/vod/master.m3u8";
+        let manifest = "#EXTM3U\n#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"audio\",URI=\"audio/index.m3u8\"\n#EXT-X-STREAM-INF:BANDWIDTH=6000000,RESOLUTION=1920x1080\nchunked/index.m3u8\n#EXT-X-STREAM-INF:BANDWIDTH=800000,RESOLUTION=640x360\n360/index.m3u8\n";
+        let rewritten = proxy_vod_manifest(source, manifest);
+        assert_eq!(rewritten.matches("/api/playlist?url=").count(), 3);
+        assert!(rewritten.contains("RESOLUTION=1920x1080"));
+        assert!(rewritten.contains("RESOLUTION=640x360"));
+        assert!(rewritten.contains(&manifest_proxy_url(source, "audio/index.m3u8", true)));
+    }
+
+    #[test]
+    fn media_key_and_initialization_uris_are_proxied() {
+        let source = "https://cdn.example/video/index.m3u8";
+        let rewritten = proxy_vod_manifest(source, "#EXTM3U\n#EXT-X-KEY:METHOD=AES-128,URI=\"../key\"\n#EXT-X-MAP:URI=\"init.mp4\"\n#EXTINF:2,\n0.m4s");
+        assert_eq!(rewritten.matches("/api/proxy?url=").count(), 3);
+        assert!(rewritten.contains(&manifest_proxy_url(source, "../key", false)));
+        assert!(rewritten.contains(&manifest_proxy_url(source, "init.mp4", false)));
+    }
 
     #[test]
     fn vod_segments_resolve_for_muted_and_regular_playlists() {

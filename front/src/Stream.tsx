@@ -3,6 +3,7 @@ import {
   For,
   Show,
   createEffect,
+  createMemo,
   createSignal,
   lazy,
   onMount,
@@ -13,6 +14,8 @@ import axios from "axios";
 import Hls from "hls.js";
 import Nav from "./components/nav";
 import WatchDetails from "./components/watchDetails";
+import ChatHeader from "./components/chatHeader";
+import { createWatchPlayer } from "./utils/watchPlayer";
 import FavBtn from "./components/favCh";
 import LiveMetadata from "./components/liveMetadata";
 import {
@@ -27,8 +30,9 @@ const ClipsContainer = lazy(() => import("./components/clipsContainer")),
   StreamChat = lazy(() => import("./components/streamChat"));
 
 const Stream: Component = () => {
+  const [mobileNavOpen, setMobileNavOpen] = createSignal(false);
   const instanceBaseUrl = window.location.origin,
-    [{ ...queryParams }, setQueryParams] = useSearchParams(),
+    [queryParams, setQueryParams] = useSearchParams(),
     { ...params } = useParams(),
     [isLive, setLiveStatus] = createSignal(false),
     [streamMetadata, setStreamMetadata] = createSignal<streamStatusResponse>(),
@@ -56,22 +60,12 @@ const Stream: Component = () => {
         return true;
       },
     },
-    queryEntries = Object.keys(queryParams).filter(
-      (key) =>
-        typeof queryParams[key] !== "undefined" && queryParams[key] !== ""
-    ),
-    queryString =
-      queryEntries.length > 0
-        ? `?${queryEntries
-            .map((key) => {
-              return `${key}=${queryParams[key]}`;
-            })
-            .join("&")}`
-        : "",
-    streamUrl = `${instanceBaseUrl}/api/stream/${params.username}${queryString}`,
-    base64encode = (content: string) => btoa(content),
-    encodeProxyUrl = (content: string) =>
-      encodeURIComponent(base64encode(content));
+    queryString = createMemo(() => {
+      const query = new URLSearchParams();
+      Object.entries(queryParams).forEach(([key, value]) => { if (value) query.set(key, String(value)); });
+      return query.size ? `?${query}` : "";
+    }),
+    base64encode = (content: string) => btoa(content);
   const resolutionOptions = [
     { value: "", label: "Auto" },
     { value: "1080", label: "1920x1080" },
@@ -82,7 +76,8 @@ const Stream: Component = () => {
     { value: "audio_only", label: "Audio only" },
   ];
   const safeUsername = String(params.username || "").toLowerCase();
-  let hlsInstance: Hls, mediaRef: HTMLMediaElement, chatScroll: HTMLDivElement;
+  let mediaRef!: HTMLVideoElement;
+  let chatScroll!: HTMLDivElement;
   const isAudioOnly = () => String(queryParams.quality || "") === "audio_only";
   const isOpusAudioOnly = () =>
     String(queryParams.quality || "").startsWith("audio_opus_");
@@ -95,58 +90,6 @@ const Stream: Component = () => {
   ];
 
   if (!Hls.isSupported()) setHlsSuportStatus(false);
-
-  const initHlsStream = () => {
-    if (Hls.isSupported()) {
-      hlsInstance = new Hls({
-        maxBufferLength: 16,
-        maxBufferSize: 64 * 1024 * 1024,
-        maxMaxBufferLength: 32,
-        backBufferLength: 2,
-        liveSyncDuration: 2,
-        manifestLoadingMaxRetry: Infinity,
-        manifestLoadingRetryDelay: 500,
-        xhrSetup: (xhr, url) => {
-          const normalizedRequestUrl = url.replace(/\?$/, ""),
-            normalizedStreamUrl = streamUrl.replace(/\?$/, "");
-
-          if (normalizedRequestUrl !== normalizedStreamUrl) {
-            xhr.open(
-              "GET",
-              `${instanceBaseUrl}/api/proxy?url=${encodeProxyUrl(url)}`
-            );
-          } else xhr.open("GET", url);
-        },
-      });
-
-      const retry = () => {
-        hlsInstance.attachMedia(mediaRef);
-        hlsInstance.loadSource(streamUrl);
-        hlsInstance.startLoad();
-      };
-
-      hlsInstance.attachMedia(mediaRef);
-
-      hlsInstance.on(Hls.Events.MEDIA_ATTACHED, () =>
-        hlsInstance.loadSource(streamUrl)
-      );
-      hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => mediaRef.play());
-      hlsInstance.on(Hls.Events.ERROR, function (_, data) {
-        if (data.fatal) {
-          switch (data.type) {
-            case Hls.ErrorTypes.NETWORK_ERROR:
-              console.log("Network error. Retrying..");
-              retry();
-              break;
-            case Hls.ErrorTypes.MEDIA_ERROR:
-              console.log("Media error. Retrying..");
-              hlsInstance.recoverMediaError();
-              break;
-          }
-        }
-      });
-    }
-  };
 
   const fetchStreamerInfo = async (retryCount: number = 0) => {
     try {
@@ -237,10 +180,7 @@ const Stream: Component = () => {
   });
 
   const handleResolutionChange = (quality: string) => {
-    const nextParams = { ...queryParams };
-    if (quality.length < 1) delete nextParams.quality;
-    else nextParams.quality = quality;
-    setQueryParams(nextParams);
+    setQueryParams({ quality: quality || undefined });
   };
 
   // updating metadata every 1 minute
@@ -299,29 +239,14 @@ const Stream: Component = () => {
   onCleanup(() => {
     clearInterval(streamMetadataUpdater);
     clearTimeout(loadingWatchdog);
-    if (hlsInstance) {
-      hlsInstance.destroy();
-    }
   });
 
-  // handle hls stream
-  createEffect(() => {
-    if (isReady() == true && isLive() == true) {
-      if (isOpusAudioOnly()) {
-        if (hlsInstance) {
-          hlsInstance.destroy();
-        }
-        mediaRef.src = streamUrl;
-        void mediaRef.play();
-        return;
-      }
-      initHlsStream();
-    }
-  });
+  createWatchPlayer(() => isReady() && isLive(), () => mediaRef,
+    `${instanceBaseUrl}/api/stream/${params.username}`, () => String(queryParams.quality || ""), setLoadingError);
 
   return (
     <>
-      <Nav isHome={false} />
+      <Nav isHome={false} mobileOpen={!isLive() || mobileNavOpen()} />
       <Show when={isReady() == false}>
         <div class="flex justify-center items-center h-screen flex-col">
           <span class="loading loading-spinner text-secondary"></span>
@@ -406,7 +331,7 @@ const Stream: Component = () => {
                   <VodsContainer
                     setFilter={setVideosFilter}
                     tabData={visibleTabData}
-                    queryString={queryString}
+                    queryString={queryString()}
                     instanceBaseUrl={instanceBaseUrl}
                     ready={isVodlistReady}
                   />
@@ -425,21 +350,10 @@ const Stream: Component = () => {
           </div>
         </Show>
         <Show when={isLive() == true}>
-          <div class="watch-page">
+          <div class="watch-page" data-nav-open={mobileNavOpen()}>
             <div class="watch-layout">
               <div class="watch-column">
-                <Show
-                  when={isAudioOnly() || isOpusAudioOnly()}
-                  fallback={
-                    <video
-                      ref={mediaRef}
-                      controls
-                      class="watch-video"
-                    />
-                  }
-                >
-                  <audio ref={mediaRef} controls class="w-full" />
-                </Show>
+                <video ref={mediaRef} controls playsinline class="watch-video" classList={{"watch-audio": isAudioOnly() || isOpusAudioOnly()}} />
                 <div class="watch-quality">
                   <label class="label p-0">
                     <span class="label-text text-sm">Resolution</span>
@@ -474,7 +388,7 @@ const Stream: Component = () => {
               </div>
               <div class="watch-chat">
                 <div class="watch-chat-panel">
-                  <h2 class="text-xl">Chat</h2>
+                  <ChatHeader expanded={mobileNavOpen()} toggle={() => setMobileNavOpen(v => !v)} />
                   <div class="watch-chat-body">
                     <div
                       class="watch-chat-messages"

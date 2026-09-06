@@ -14,7 +14,7 @@ COPY front/index.html ./front/index.html
 COPY front/postcss.config.js front/tailwind.config.js front/vite.config.ts front/tsconfig.json ./front/
 
 RUN npm ci
-RUN npm run build:assets
+RUN node --test front/src/utils/*.test.mjs && npm run build:assets
 
 FROM rust:1.87-slim AS builder
 WORKDIR /app
