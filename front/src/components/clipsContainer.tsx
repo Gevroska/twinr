@@ -47,7 +47,7 @@ const ClipsContainer: Component<{
                                         href={`/${streamer}/clip/${item.slug}`}
                                     >
                                         <figure>
-                                            <img
+                                            <img loading="lazy" decoding="async"
                                                 src={`${instanceBaseUrl}/api/proxy?url=${base64encode(
                                                     item.thumbnailURL
                                                 )}`}

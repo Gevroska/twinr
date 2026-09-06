@@ -7,6 +7,7 @@ export default defineConfig({
     port: 3100,
   },
   build: {
+    manifest: true,
     target: "esnext",
     minify: "oxc",
     cssMinify: "lightningcss",

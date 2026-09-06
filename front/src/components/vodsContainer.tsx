@@ -47,7 +47,7 @@ const VodsContainer: Component<{
                                         href={`/videos/${item.id}${queryString}`}
                                     >
                                         <figure>
-                                            <img
+                                            <img loading="lazy" decoding="async"
                                                 src={`${instanceBaseUrl}/api/proxy?url=${base64encode(
                                                     item.previewThumbnailURL
                                                 )}`}

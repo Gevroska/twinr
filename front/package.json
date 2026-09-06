@@ -5,7 +5,7 @@
     "scripts": {
         "start": "vite",
         "dev": "vite",
-        "build": "tsc --noEmit --skipLibCheck && vite build",
+        "build": "tsc --noEmit --skipLibCheck && vite build && node ../scripts/check_front_build.mjs",
         "serve": "vite preview"
     },
     "license": "MIT",
