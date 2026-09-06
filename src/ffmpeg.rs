@@ -112,6 +112,8 @@ fn output_args(output: &Output) -> Vec<String> {
             "0:a:0?",
             "-c",
             "copy",
+            "-bsf:a",
+            "aac_adtstoasc",
             "-movflags",
             "frag_keyframe+empty_moov+default_base_moof",
             "-f",
@@ -305,6 +307,7 @@ mod tests {
     fn download_copies_and_opus_maps_audio() {
         let args = output_args(&Output::Download);
         assert!(args.windows(2).any(|p| p == ["-c", "copy"]));
+        assert!(args.windows(2).any(|p| p == ["-bsf:a", "aac_adtstoasc"]));
         assert!(args.contains(&"frag_keyframe+empty_moov+default_base_moof".into()));
         let args = output_args(&Output::Opus(64));
         assert!(args.windows(2).any(|p| p == ["-map", "0:a:0"]));
