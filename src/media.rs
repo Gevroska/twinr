@@ -209,7 +209,11 @@ pub(crate) async fn vod_download(
     if !crate::security::vod_id(&id) {
         return crate::errors::AppError::InvalidInput.into_response();
     }
-    let (source, master) = match vod_master(&state, &id).await {
+    let (master, details) = tokio::join!(
+        vod_master(&state, &id),
+        crate::metadata::vod_details(&state, &id)
+    );
+    let (source, master) = match master {
         Ok(v) => v,
         Err(r) => return r,
     };
@@ -218,7 +222,14 @@ pub(crate) async fn vod_download(
         &source,
         &select_playlist(&master, &quality).unwrap_or_default(),
     );
-    let title=gql(&state,json!({"query":"query DownloadTitle($id: ID!) { video(id: $id) { title } }","variables":{"id":id}}),false).await.ok().and_then(|v|v.pointer("/data/video/title").and_then(Value::as_str).map(str::to_owned)).unwrap_or_else(||"twinr-vod".into());
+    let title = details
+        .ok()
+        .and_then(|v| {
+            v.pointer("/data/video/title")
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+        })
+        .unwrap_or_else(|| "twinr-vod".into());
     crate::ffmpeg::process(
         state,
         &selected,

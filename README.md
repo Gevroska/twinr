@@ -98,4 +98,6 @@ The Docker build runs frontend tests/build, Rust formatting checks, release test
 
 ### Remaining limitations
 
+Runtime frontend packages (including Axios and SolidJS) and compatible build dependencies were updated during the security pass; unused DOMPurify was removed. The remaining npm audit findings concern the legacy Vite/esbuild development server toolchain, which is not shipped in the Rust runtime. A separate Vite major-version migration is recommended; do not expose the development server publicly.
+
 Downloads are generated streams: their final size is unknown beforehand and HTTP resume/seek of the generated file is not supported. Source codecs must be MP4-compatible; failures terminate the download rather than silently re-encoding an entire VOD. Validate unusual codecs and muted/discontinuous archives before long downloads. The HLS rewriter deliberately preserves unknown tags; full variable substitution/content-steering support is not implemented. Twitch's undocumented GQL operations and CDN hosts can change independently of Twinr.
