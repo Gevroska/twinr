@@ -20,7 +20,15 @@ export default defineConfig({
   },
   build: {
     target: "esnext",
-    minify: false,
-    cssMinify: false,
+    minify: "esbuild",
+    cssMinify: true,
+    // The complete HLS engine preserves alternate audio and container support.
+    // Cache it independently from application edits, with a 600 kB size budget.
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        manualChunks: { hls: ["hls.js"] },
+      },
+    },
   },
 });

@@ -55,10 +55,13 @@ async fn response_headers(
         header::REFERRER_POLICY,
         HeaderValue::from_static("no-referrer"),
     );
-    h.insert(
-        header::X_FRAME_OPTIONS,
-        HeaderValue::from_static("SAMEORIGIN"),
-    );
+    // Dedicated clip embeds remain embeddable; ordinary application pages do not.
+    if !path.contains("/clip/") {
+        h.insert(
+            header::X_FRAME_OPTIONS,
+            HeaderValue::from_static("SAMEORIGIN"),
+        );
+    }
     h.insert(
         "permissions-policy",
         HeaderValue::from_static("camera=(), microphone=(), geolocation=()"),
@@ -66,11 +69,23 @@ async fn response_headers(
     if !h.contains_key(header::CACHE_CONTROL) {
         h.insert(
             header::CACHE_CONTROL,
-            HeaderValue::from_static(if path.starts_with("/assets/") {
-                "public, max-age=31536000, immutable"
-            } else {
-                "no-cache"
-            }),
+            HeaderValue::from_static(
+                if path.starts_with("/assets/")
+                    && path
+                        .rsplit('-')
+                        .next()
+                        .and_then(|s| s.split('.').next())
+                        .is_some_and(|hash| {
+                            hash.len() == 8 && hash.bytes().all(|c| c.is_ascii_hexdigit())
+                        })
+                {
+                    "public, max-age=31536000, immutable"
+                } else if path.starts_with("/assets/") {
+                    "public, max-age=3600"
+                } else {
+                    "no-cache"
+                },
+            ),
         );
     }
     response
