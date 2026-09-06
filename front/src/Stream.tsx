@@ -100,6 +100,8 @@ const Stream: Component = () => {
         ),
         data = req.data as streamStatusResponse & { valid?: boolean };
 
+      if (req.status >= 500) throw new Error("Channel metadata is temporarily unavailable");
+
       if (req.status !== 200 || data.invalid == true || data.valid == false) {
         setLiveStatus(false);
         const streamerMetadataReq = await axios.get(

@@ -25,6 +25,7 @@ export function createWatchPlayer(ready: () => boolean, media: () => HTMLMediaEl
     const selected = quality();
     const url = (selected.startsWith("audio_opus_") || selected === "audio_only") ? `${source}?quality=${encodeURIComponent(selected)}` : source;
     if (url === activeSource) { applyQuality(); return; }
+    const resume = !activeSource || !media().paused;
     const position = Number.isFinite(media().duration) ? media().currentTime : 0;
     activeSource = url;
     hls?.destroy();
@@ -33,17 +34,17 @@ export function createWatchPlayer(ready: () => boolean, media: () => HTMLMediaEl
     reportError("");
     if (selected.startsWith("audio_opus_")) {
       media().src = url;
-      play();
+      if (resume) play();
       return;
     }
     if (!Hls.isSupported()) {
       media().src = url;
-      play();
+      if (resume) play();
       return;
     }
     hls = new Hls({ backBufferLength: 9, maxBufferLength: 16, maxMaxBufferLength: 32, manifestLoadingMaxRetry: 3, manifestLoadingRetryDelay: 500, startPosition: position || -1 });
     hls.on(Hls.Events.MEDIA_ATTACHED, () => hls?.loadSource(url));
-    hls.on(Hls.Events.MANIFEST_PARSED, () => { applyQuality(); play(); });
+    hls.on(Hls.Events.MANIFEST_PARSED, () => { applyQuality(); if (resume) play(); });
     hls.on(Hls.Events.LEVEL_SWITCHED, (_, data) => {
       media().dataset.qualityHeight = String(hls?.levels[data.level]?.height || 0);
       media().dataset.autoQuality = String(hls?.autoLevelEnabled);

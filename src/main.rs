@@ -236,47 +236,28 @@ async fn stream_info(
     State(state): State<Arc<AppState>>,
     Path(username): Path<String>,
 ) -> impl IntoResponse {
-    let u = username.to_lowercase();
-    let cat = gql(&state, json!({"operationName":"SignupPromptCategory","variables":{"channelLogin":u,"isLive":true,"isVod":false,"videoID":""},"extensions":{"persistedQuery":{"version":1,"sha256Hash":"21c86683bbfd1a6e9e6636c2b460f94c5014272dcb56f0aa04a7d28d0633502c"}}}), false).await;
-    let avatar = gql(&state, json!({"operationName":"ChannelShell","variables":{"login":u},"extensions":{"persistedQuery":{"version":1,"sha256Hash":"580ab410bcd0c1ad194224957ae2241e5d252b2c5173d8e0cce9d32d5bb14efe"}}}), false).await;
-    let title = gql(&state, json!({"operationName":"ComscoreStreamingQuery","variables":{"channel":u,"clipSlug":"","isClip":false,"isLive":true,"isVodOrCollection":false,"vodID":""},"extensions":{"persistedQuery":{"version":1,"sha256Hash":"e1edae8122517d013405f237ffcc124515dc6ded82480a88daef69c83b53ac01"}}}), false).await;
-    let (Ok(cat), Ok(avatar), Ok(title)) = (cat, avatar, title) else {
+    let result = gql(&state, json!({
+        "query": "query TwinrStreamInfo($login: String!) { user(login: $login) { profileImageURL(width: 70) broadcastSettings { title } stream { viewersCount game { name } } } }",
+        "variables": {"login": username.to_lowercase()}
+    }), false).await;
+    let Ok(result) = result else {
+        return (StatusCode::BAD_GATEWAY, Json(json!({"error": "Unable to load channel metadata"}))).into_response();
+    };
+    if result.get("errors").and_then(Value::as_array).is_some_and(|errors| !errors.is_empty()) {
+        return (StatusCode::BAD_GATEWAY, Json(json!({"error": "Unable to load channel metadata"}))).into_response();
+    }
+    let Some(user) = result.pointer("/data/user").filter(|user| !user.is_null()) else {
         return invalid().into_response();
     };
-
-    let user_id = cat
-        .pointer("/data/user/id")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    let game = cat
-        .pointer("/data/user/stream/game/name")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    let av = avatar
-        .pointer("/data/userOrError/profileImageURL")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    let t = title
-        .pointer("/data/user/broadcastSettings/title")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    if user_id.is_empty() || game.is_empty() || av.is_empty() || t.is_empty() {
-        return invalid().into_response();
-    }
-
-    let views = gql(&state, json!({"query": format!("query UseViewCount {{ user(id: {}) {{ stream {{ viewersCount }} }} }}", user_id),"variables":{}}), false).await;
-    let Ok(views) = views else {
+    let Some(stream) = user.get("stream").filter(|stream| !stream.is_null()) else {
         return invalid().into_response();
     };
-    let v = views
-        .pointer("/data/user/stream/viewersCount")
-        .and_then(|x| x.as_i64())
-        .unwrap_or(-1);
-    if v < 0 {
-        return invalid().into_response();
-    }
-
-    Json(json!({"views":v,"game":game,"avatar":av,"title":t})).into_response()
+    Json(json!({
+        "views": stream.get("viewersCount").cloned().unwrap_or(json!(0)),
+        "game": stream.pointer("/game/name").cloned().unwrap_or(json!("")),
+        "avatar": user.get("profileImageURL").cloned().unwrap_or(json!("")),
+        "title": user.pointer("/broadcastSettings/title").cloned().unwrap_or(json!(username))
+    })).into_response()
 }
 
 async fn streamer_info(
@@ -659,7 +640,7 @@ async fn stream_proxy(
         )
             .into_response();
     }
-    let url = format!("https://usher.ttvnw.net/api/channel/hls/{}.m3u8?player_type=pulsar&player_backend=mediaplayer&playlist_include_framerate=true&allow_source=true&transcode_mode=cbr_v1&cdm=wv&player_version=1.22.0&token={}&sig={}", username.to_lowercase(), urlencoding::encode(token), sig);
+    let url = format!("https://usher.ttvnw.net/api/channel/hls/{}.m3u8?player_type=pulsar&player_backend=mediaplayer&playlist_include_framerate=true&allow_source=true&allow_audio_only=true&transcode_mode=cbr_v1&cdm=wv&player_version=1.22.0&token={}&sig={}", username.to_lowercase(), urlencoding::encode(token), sig);
     let list_text = match fetch_raw_text(&state, &url, true).await {
         Ok(t) => t,
         Err(r) => return r,
@@ -753,7 +734,7 @@ async fn vod_proxy(
     }
 
     let p: u32 = rand::thread_rng().gen_range(1..=99999);
-    let playlist_url = format!("https://usher.ttvnw.net/vod/{id}.m3u8?acmb=e30%3D&allow_source=true&p={p}&cdm=wv&transcode_mode=cbr_v1&supported_codecs=avc1&player_version=1.19.0&player_base=mediaplayer&reassignments_supported=true&playlist_include_framerate=true&player_backend=mediaplayer&token={}&sig={}", urlencoding::encode(val), sig);
+    let playlist_url = format!("https://usher.ttvnw.net/vod/{id}.m3u8?acmb=e30%3D&allow_source=true&allow_audio_only=true&p={p}&cdm=wv&transcode_mode=cbr_v1&supported_codecs=avc1&player_version=1.19.0&player_base=mediaplayer&reassignments_supported=true&playlist_include_framerate=true&player_backend=mediaplayer&token={}&sig={}", urlencoding::encode(val), sig);
     let list_text = match fetch_raw_text(&state, &playlist_url, false).await {
         Ok(t) => t,
         Err(r) => return r,
