@@ -4,5 +4,8 @@ work-*
 node_modules
 front/node_modules
 front/dist
+public/assets
+public/index.html
+public/styles.min.css
 .env
 .env.*

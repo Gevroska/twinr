@@ -72,7 +72,7 @@ Invalid numeric/configuration values fail startup. Metadata requests also have a
 
 ## Development and validation
 
-Rust 1.87+, Node 20+, and FFmpeg with libopus are required.
+Rust 1.87+, Node 24 LTS, and FFmpeg with libopus are required. Docker builds assets with Node 24; Node is not included in the runtime image.
 
 ```bash
 npm ci
@@ -100,6 +100,6 @@ The Docker build runs frontend tests/build, Rust formatting checks, release test
 
 ### Remaining limitations
 
-Runtime frontend packages (including Axios and SolidJS) and compatible build dependencies were updated during the security pass; unused DOMPurify was removed. The remaining npm audit findings concern the legacy Vite/esbuild development server toolchain, which is not shipped in the Rust runtime. A separate Vite major-version migration is recommended; do not expose the development server publicly.
+The frontend uses Vite 8 with Rolldown/Oxc for JavaScript and Lightning CSS for CSS minification, plus the stable Solid 1-compatible Vite plugin. The unused Solid devtools dependency was removed. Vite configuration is explicitly ESM (`front/vite.config.mts`); PostCSS/Tailwind configuration remains CommonJS. Hexadecimal asset hashes preserve the Rust server's immutable caching policy, and HLS remains a separate chunk. Both npm dependency trees passed `npm audit` with zero findings at migration time. Run `npm audit` at the root and in `front` when updating dependencies; do not expose the development server publicly.
 
 Downloads are generated streams: their final size is unknown beforehand and HTTP resume/seek of the generated file is not supported. Source codecs must be MP4-compatible; failures terminate the download rather than silently re-encoding an entire VOD. Validate unusual codecs and muted/discontinuous archives before long downloads. The HLS rewriter deliberately preserves unknown tags; full variable substitution/content-steering support is not implemented. Twitch's undocumented GQL operations and CDN hosts can change independently of Twinr.
