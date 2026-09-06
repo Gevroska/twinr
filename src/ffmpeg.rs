@@ -38,6 +38,7 @@ async fn resource(
     if secret != g.secret {
         return AppError::ForbiddenUrl.into_response();
     }
+    let kind = kind.split('.').next().unwrap_or("");
     let Ok(bytes) = STANDARD.decode(&q.url) else {
         return AppError::InvalidInput.into_response();
     };
@@ -65,9 +66,20 @@ async fn resource(
     }
 }
 fn gateway_url(base: &str, url: &str, playlist: bool) -> String {
+    // FFmpeg checks segment extensions separately from playlist extensions.
+    // Keep the source extension visible despite carrying the URL in a query.
+    let parsed = reqwest::Url::parse(url).ok();
+    let extension = parsed
+        .as_ref()
+        .and_then(|u| u.path().rsplit('.').next())
+        .filter(|ext| {
+            !ext.is_empty() && ext.len() <= 8 && ext.bytes().all(|c| c.is_ascii_alphanumeric())
+        })
+        .unwrap_or("ts");
     format!(
-        "{base}/{}?url={}",
+        "{base}/{}.{}?url={}",
         if playlist { "playlist" } else { "media" },
+        if playlist { "m3u8" } else { extension },
         urlencoding::encode(&STANDARD.encode(url))
     )
 }
@@ -272,6 +284,23 @@ pub(crate) fn filename(title: &str, id: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn private_gateway_preserves_ffmpeg_segment_extensions() {
+        for (url, extension) in [
+            ("https://cdn.ttvnw.net/0-muted.ts?sig=x", "ts"),
+            ("https://cdn.ttvnw.net/init.mp4", "mp4"),
+            ("https://cdn.ttvnw.net/segment.m4s", "m4s"),
+        ] {
+            assert!(gateway_url("http://127.0.0.1/secret", url, false)
+                .starts_with(&format!("http://127.0.0.1/secret/media.{extension}?url=")));
+        }
+        assert!(gateway_url(
+            "http://127.0.0.1/secret",
+            "https://cdn.ttvnw.net/index.m3u8",
+            true
+        )
+        .contains("/playlist.m3u8?"));
+    }
     #[test]
     fn download_copies_and_opus_maps_audio() {
         let args = output_args(&Output::Download);
