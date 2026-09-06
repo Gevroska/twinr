@@ -1,16 +1,19 @@
 import { Component, createSignal, For, Show } from 'solid-js';
 import axios from 'axios';
+import { normalizeFavorites } from './utils/favorites.mjs';
 
 import Nav from './components/nav';
 import { VsSync } from 'solid-icons/vs';
 
 const FavoritesPage: Component = () => {
+    const [loadError,setLoadError] = createSignal('');
     const [isReady, setIsReady] = createSignal(false),
         [isPopupClosed, closePopup] = createSignal(true),
         [emptyList, setEmptyList] = createSignal<boolean>(false),
         [channelsMetadata, setChannelsMetadata] = createSignal<
             {
                 description: string;
+                login: string;
                 displayName: string;
                 avatar: string;
                 banner: string;
@@ -21,9 +24,7 @@ const FavoritesPage: Component = () => {
         baseUrl = window.location.origin;
 
     function getFavs(): string[] {
-        const items = localStorage.getItem('favorites');
-        if (items == null) return [];
-        return JSON.parse(items);
+        try { return normalizeFavorites(JSON.parse(localStorage.getItem('favorites') || '[]')); } catch { return []; }
     }
 
     function exportBase64Channels() {
@@ -35,9 +36,11 @@ const FavoritesPage: Component = () => {
     function importFavs() {
         const content = importVal();
         if (content.length > 1) {
-            const decoded = atob(content);
-            localStorage.setItem('favorites', decoded);
-            window.location.reload();
+            try {
+                const decoded = normalizeFavorites(JSON.parse(atob(content)));
+                localStorage.setItem('favorites', JSON.stringify(decoded));
+                window.location.reload();
+            } catch { setLoadError('Invalid favorites code.'); }
         }
     }
 
@@ -50,32 +53,19 @@ const FavoritesPage: Component = () => {
             return;
         }
 
-        channels.forEach(async (ch) => {
-            const infoReq = await axios.get(`${baseUrl}/api/user/${ch}`);
-
-            if (infoReq.status == 200) {
-                const infoData: {
-                    error: {} | null;
-                    data: {
-                        description: string;
-                        displayName: string;
-                        avatar: string;
-                        banner: string;
-                        live: boolean;
-                    };
-                } = infoReq.data;
-
-                if (infoData.error == null) {
-                    setChannelsMetadata((prev) => [...prev, infoData.data]);
-                }
+        try {
+            for (let index=0;index<channels.length;index+=100) {
+                const response=await axios.post(`${baseUrl}/api/users`,{usernames:channels.slice(index,index+100)});
+                setChannelsMetadata(previous=>[...previous,...response.data.data]);
+                if (response.data.failed?.length) setLoadError('Some channels could not be loaded. Please refresh to retry.');
             }
-        });
-
-        setIsReady(true);
+        } catch { setLoadError('Favorites could not be loaded. Please refresh to retry.'); }
+        finally { setIsReady(true); }
     })();
     return (
         <div>
             <Nav isHome={false} />
+            <Show when={loadError()}><p role="alert" class="p-4 text-error">{loadError()}</p></Show>
 
             <Show when={isReady() == false}>
                 <div class="flex justify-center items-center h-screen flex-col">
@@ -160,7 +150,7 @@ const FavoritesPage: Component = () => {
                     <div class="mt-2">
                         <For each={channelsMetadata()}>
                             {(channel, i) => (
-                                <a href={`/${channel.displayName}`}>
+                                <a href={`/${channel.login}`}>
                                     <div
                                         class="bg-cover bg-center rounded-md mb-2"
                                         style={{
