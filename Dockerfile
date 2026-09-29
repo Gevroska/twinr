@@ -16,7 +16,8 @@ COPY front/postcss.config.js front/vite.config.mts front/tsconfig.json ./front/
 RUN npm ci
 RUN node --test front/src/utils/*.test.mjs && npm run build:assets
 
-FROM rust:1.97-slim AS builder
+# Keep the builder on Bookworm so its glibc matches the runtime image.
+FROM rust:1.97-slim-bookworm AS builder
 WORKDIR /app
 RUN rustup component add rustfmt
 
@@ -35,6 +36,11 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates ffmpeg && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app/target/release/twinr /usr/local/bin/twinr
+RUN set -eu; \
+    ldd /usr/local/bin/twinr > /tmp/twinr-ldd 2>&1 || { cat /tmp/twinr-ldd; exit 1; }; \
+    cat /tmp/twinr-ldd; \
+    if grep -q 'not found' /tmp/twinr-ldd; then exit 1; fi; \
+    rm /tmp/twinr-ldd
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/templates ./templates
 COPY --from=builder /app/package.json ./package.json
