@@ -49,7 +49,7 @@ const navBar: Component<{ isHome: boolean; mobileOpen?: boolean }> = (props) => 
                 {/* mobile */}
                 <Show when={props.mobileOpen !== false}>
                 <div id="watch-mobile-navigation" class="fixed z-30 md:hidden lg:hidden">
-                    <div class="btm-nav border-t border-base-200 bg-base-100">
+                    <div class="dock border-t border-base-200 bg-base-100">
                         <button aria-label="Home" onclick={() => navigate('/')}>
                             <FiHome />
                         </button>
