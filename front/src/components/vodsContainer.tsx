@@ -17,7 +17,7 @@ const VodsContainer: Component<{
             <div class="flex justify-end">
                 <select
                     onchange={(e) => setFilter(e.target.value)}
-                    class="select select-bordered select-sm"
+                    class="select select-sm"
                 >
                     <option value="ARCHIVE">Archives</option>
                     <option value="UPLOAD">Uploads</option>
@@ -43,7 +43,7 @@ const VodsContainer: Component<{
                             <For each={tabData()?.vods}>
                                 {(item) => (
                                     <A
-                                        class="card card-compact w-72 h-full bg-base-100 shadow-md"
+                                        class="card card-sm w-72 h-full bg-base-100 shadow-md"
                                         href={`/videos/${item.id}${queryString}`}
                                     >
                                         <figure>
