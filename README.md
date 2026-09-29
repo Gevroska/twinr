@@ -4,7 +4,7 @@ Twinr is a privacy-focused alternative frontend to Twitch, inspired by [Invidiou
 
 ## Architecture
 
-The production server is Rust (Axum, Tokio, Reqwest); SolidJS owns the UI. Legacy TypeScript server files are not part of the Docker runtime.
+The production server is Rust (Axum, Tokio, Reqwest); SolidJS owns the UI.
 
 Production JavaScript and CSS are minified; hashed assets are immutable-cacheable.
 Secondary Solid routes load on demand. HLS is imported only when an actual HLS player is ready, so home, offline channels, clips and direct Opus playback do not download it. A build check caps initial JavaScript at 64 KiB and rejects eager player/route imports. Deferred chunks use the existing static-file server and cache policy; no server rendering or additional API polling is introduced.
@@ -75,7 +75,7 @@ Invalid numeric/configuration values fail startup. Metadata requests also have a
 
 ## Development and validation
 
-Rust 1.87+, Node 24 LTS, and FFmpeg with libopus are required. Docker builds assets with Node 24; Node is not included in the runtime image.
+Rust 1.87+, Node 24 or 26, and FFmpeg with libopus are required. Docker builds assets with Node 26; Node is not included in the runtime image.
 
 ```bash
 npm ci
