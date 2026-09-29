@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM node:24-bookworm-slim AS assets
+FROM node:26-bookworm-slim AS assets
 WORKDIR /app
 
 COPY package.json package-lock.json* postcss.config.js ./
