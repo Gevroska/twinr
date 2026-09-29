@@ -235,11 +235,10 @@ const Vods: Component = () => {
                   <p role="alert" class="mt-2">{playbackError()}</p>
                 </Show>
                 <div class="watch-quality">
-                  <label class="label p-0">
-                    <span class="label-text text-sm">Resolution</span>
-                  </label>
+                  <label class="p-0 text-sm" for="vod-quality">Resolution</label>
                   <select
-                    class="select select-bordered select-sm w-full max-w-[220px]"
+                    id="vod-quality"
+                    class="select select-sm w-full max-w-[220px]"
                     value={String(queryParams.quality || "")}
                     onchange={(e) =>
                       handleResolutionChange(e.currentTarget.value)

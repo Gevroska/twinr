@@ -93,7 +93,7 @@ const FavoritesPage: Component = () => {
                                         Your favorites code
                                     </h3>
                                     <input
-                                        class="input input-bordered w-full max-w-xs"
+                                        class="input w-full max-w-xs"
                                         type="text"
                                         value={exportBase64Channels()}
                                     />
@@ -110,7 +110,7 @@ const FavoritesPage: Component = () => {
                                     </p>
                                 </Show>
                                 <input
-                                    class="input input-bordered w-full max-w-xs"
+                                    class="input w-full max-w-xs"
                                     type="text"
                                     value={importVal()}
                                     onInput={(e) =>
@@ -162,7 +162,7 @@ const FavoritesPage: Component = () => {
                                             )}')`,
                                         }}
                                     >
-                                        <div class="flex flex-col w-full lg:flex-row space-x-1 md:space-x-4 bg-base-100 p-4 rounded-md bg-opacity-50 backdrop-blur-md">
+                                        <div class="flex flex-col w-full lg:flex-row space-x-1 md:space-x-4 bg-base-100/50 p-4 rounded-md backdrop-blur-md">
                                             <div class="flex flex-col space-y-2 items-center justify-center">
                                                 <img loading="lazy" decoding="async"
                                                     class="rounded-full w-20"

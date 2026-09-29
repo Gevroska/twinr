@@ -125,16 +125,15 @@ const Home: Component = () => {
               <p class="text-sm text-base-content/70">
                 Lightweight Twitch viewer focused on privacy.
               </p>
-              <div class="form-control w-full">
-                <label class="label">
-                  <span class="label-text text-base font-medium">
-                    Search stream, VOD, or clip
-                  </span>
+              <div class="flex w-full flex-col">
+                <label class="mb-1 text-base font-medium" for="home-search">
+                  Search stream, VOD, or clip
                 </label>
                 <input
+                  id="home-search"
                   type="text"
                   placeholder="URL, channel name, VOD ID, clip URL..."
-                  class="input input-bordered w-full"
+                  class="input w-full"
                   value={inputVal()}
                   onInput={(e) => setInputVal(e.currentTarget.value)}
                   onKeyDown={(e) => {
@@ -147,7 +146,7 @@ const Home: Component = () => {
                   <summary class="cursor-pointer font-medium">Advanced</summary>
                   <select
                     onchange={(e) => setRes(e.target.value)}
-                    class="select select-bordered mt-2 w-full"
+                    class="select mt-2 w-full"
                   >
                     <option disabled selected>
                       Resolution
@@ -160,7 +159,7 @@ const Home: Component = () => {
                   </select>
                 </details>
 
-                <button class="btn btn-secondary mt-3" onClick={handleSearch}>
+                <button class="btn btn-secondary mt-3 w-full uppercase" onClick={handleSearch}>
                   Search
                 </button>
               </div>

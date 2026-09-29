@@ -338,11 +338,10 @@ const Stream: Component = () => {
               <div class="watch-column">
                 <video ref={mediaRef} controls playsinline class="watch-video" classList={{"watch-audio": isAudioOnly() || isOpusAudioOnly()}} />
                 <div class="watch-quality">
-                  <label class="label p-0">
-                    <span class="label-text text-sm">Resolution</span>
-                  </label>
+                  <label class="p-0 text-sm" for="stream-quality">Resolution</label>
                   <select
-                    class="select select-bordered select-sm w-full max-w-[220px]"
+                    id="stream-quality"
+                    class="select select-sm w-full max-w-[220px]"
                     value={String(queryParams.quality || "")}
                     onchange={(e) =>
                       handleResolutionChange(e.currentTarget.value)
