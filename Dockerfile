@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM node:24-bookworm-slim AS assets
+FROM node:26-bookworm-slim AS assets
 WORKDIR /app
 
 COPY package.json package-lock.json* postcss.config.js ./
@@ -16,7 +16,7 @@ COPY front/postcss.config.js front/vite.config.mts front/tsconfig.json ./front/
 RUN npm ci
 RUN node --test front/src/utils/*.test.mjs && npm run build:assets
 
-FROM rust:1.87-slim AS builder
+FROM rust:1.97-slim AS builder
 WORKDIR /app
 RUN rustup component add rustfmt
 
