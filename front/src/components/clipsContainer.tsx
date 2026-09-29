@@ -17,7 +17,7 @@ const ClipsContainer: Component<{
             <div class="flex justify-end">
                 <select
                     onchange={(e) => setFilter(e.target.value)}
-                    class="select select-bordered select-sm"
+                    class="select select-sm"
                 >
                     <option value="LAST_DAY">Last Day</option>
                     <option value="LAST_WEEK">Last Week</option>
@@ -43,7 +43,7 @@ const ClipsContainer: Component<{
                             <For each={tabData()?.clips}>
                                 {(item) => (
                                     <A
-                                        class="card card-compact w-72 h-full bg-base-100 shadow-md"
+                                        class="card card-sm w-72 h-full bg-base-100 shadow-md"
                                         href={`/${streamer}/clip/${item.slug}`}
                                     >
                                         <figure>
