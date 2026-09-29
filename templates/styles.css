@@ -1,6 +1,8 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@source "../templates";
+@plugin "daisyui" {
+    themes: dracula --default;
+}
 
 body {
     font-family: 'Poppins';
