@@ -39,7 +39,7 @@ COPY --from=builder /app/target/release/twinr /usr/local/bin/twinr
 RUN set -eu; \
     ldd /usr/local/bin/twinr > /tmp/twinr-ldd 2>&1 || { cat /tmp/twinr-ldd; exit 1; }; \
     cat /tmp/twinr-ldd; \
-    ! grep -q 'not found' /tmp/twinr-ldd; \
+    if grep -q 'not found' /tmp/twinr-ldd; then exit 1; fi; \
     rm /tmp/twinr-ldd
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/templates ./templates
