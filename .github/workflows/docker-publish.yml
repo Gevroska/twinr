@@ -82,10 +82,28 @@ jobs:
         with:
           context: .
           push: ${{ github.event_name != 'pull_request' }}
+          load: ${{ github.event_name == 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Smoke test runtime container
+        if: github.event_name == 'pull_request'
+        env:
+          IMAGE: ${{ steps.meta.outputs.tags }}
+        run: |
+          docker run --detach --name twinr-smoke --publish 127.0.0.1:39876:3000 "$IMAGE"
+          trap 'docker rm --force twinr-smoke >/dev/null 2>&1 || true' EXIT
+          for attempt in {1..20}; do
+            if curl --fail --silent http://127.0.0.1:39876/api > /tmp/twinr-api.json; then
+              cat /tmp/twinr-api.json
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs twinr-smoke
+          exit 1
 
       # Sign the resulting Docker image digest except on PRs.
       # This will only write to the public Rekor transparency log when the Docker
