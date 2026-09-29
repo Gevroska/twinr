@@ -17,7 +17,7 @@ RUN npm ci
 RUN node --test front/src/utils/*.test.mjs && npm run build:assets
 
 # Keep the builder on Bookworm so its glibc matches the runtime image.
-FROM rust:1.97-slim-bookworm AS builder
+FROM rust:1.98-slim-bookworm AS builder
 WORKDIR /app
 RUN rustup component add rustfmt
 
