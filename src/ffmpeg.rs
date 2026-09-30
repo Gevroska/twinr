@@ -179,7 +179,7 @@ pub(crate) async fn process(
         base: base.clone(),
     };
     let app = Router::new()
-        .route("/:secret/:kind", get(resource))
+        .route("/{secret}/{kind}", get(resource))
         .with_state(gateway);
     let server = tokio::spawn(async move {
         let _ = axum::serve(listener, app).await;

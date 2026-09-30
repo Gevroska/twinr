@@ -1,6 +1,5 @@
 /* @refresh reload */
 import { render } from 'solid-js/web';
-import { Router } from '@solidjs/router';
 import h from 'solid-js/h';
 
 import './index.css';
@@ -25,9 +24,7 @@ const root = document.getElementById('root');
 
 render(
     () => (
-        <Router>
-            <App />
-        </Router>
+        <App />
     ),
     root!
 );
