@@ -259,7 +259,7 @@ const Vods: Component = () => {
                         <DownloadVods
                           id={id}
                           queryString={queryString()}
-                          streamer={vodInfo()?.username!}
+                          streamer={vodInfo()?.username ?? ""}
                           title={vodInfo()?.title!}
                         />
                       </div>

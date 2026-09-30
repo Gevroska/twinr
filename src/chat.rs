@@ -1,6 +1,6 @@
 use crate::state::AppState;
 use axum::{
-    extract::{State, WebSocketUpgrade},
+    extract::{ws::rejection::WebSocketUpgradeRejection, State, WebSocketUpgrade},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
 };
@@ -10,9 +10,9 @@ use std::sync::Arc;
 pub async fn root_or_ws(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
-    ws: Option<WebSocketUpgrade>,
+    ws: Result<WebSocketUpgrade, WebSocketUpgradeRejection>,
 ) -> Response {
-    if let Some(upgrade) = ws {
+    if let Ok(upgrade) = ws {
         if let Some(origin) = headers.get("origin").and_then(|h| h.to_str().ok()) {
             let permitted = state
                 .base_url
@@ -197,7 +197,7 @@ async fn chat_socket(stream: axum::extract::ws::WebSocket) {
                         if tw_send.send(tokio_tungstenite::tungstenite::Message::Text(pong.into())).await.is_err() { return; }
                     }
                     let messages:Vec<_>=text.lines().filter_map(parse_message).collect();
-                    if !messages.is_empty() && sender.send(Message::Text(serde_json::to_string(&messages).unwrap())).await.is_err() { break; }
+                    if !messages.is_empty() && sender.send(Message::Text(serde_json::to_string(&messages).unwrap().into())).await.is_err() { break; }
                 }
             }
             incoming = receiver.next() => {

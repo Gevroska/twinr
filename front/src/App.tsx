@@ -1,6 +1,6 @@
 import type { Component } from "solid-js";
 import { lazy, Suspense, ErrorBoundary } from "solid-js";
-import { Route, Routes } from "@solidjs/router";
+import { Route, Router } from "@solidjs/router";
 
 import Home from "./Home";
 const Stream = lazy(() => import("./Stream"));
@@ -26,9 +26,13 @@ const NotFound: Component = () => {
 
 const App: Component = () => {
   return (
-    <ErrorBoundary fallback={<p role="alert" class="p-4">Unable to load this page. Please refresh and try again.</p>}>
-    <Suspense fallback={<p role="status" class="p-4">Loading...</p>}>
-    <Routes>
+    <Router root={(props) => (
+      <ErrorBoundary fallback={<p role="alert" class="p-4">Unable to load this page. Please refresh and try again.</p>}>
+        <Suspense fallback={<p role="status" class="p-4">Loading...</p>}>
+          {props.children}
+        </Suspense>
+      </ErrorBoundary>
+    )}>
       <Route path="/" component={Home} />
       <Route path="/favorites" component={Favorites} />
       <Route path="/settings" component={Settings} />
@@ -36,9 +40,7 @@ const App: Component = () => {
       <Route path="/videos/:id" component={Vod} />
       <Route path="/:username" component={Stream} />
       <Route path="*" component={NotFound} />
-    </Routes>
-    </Suspense>
-    </ErrorBoundary>
+    </Router>
   );
 };
 
