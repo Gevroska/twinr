@@ -273,7 +273,7 @@ const Stream: Component = () => {
                       streamerMetadata()?.profileImageURL!
                     )}`}
                   />
-                  <FavBtn username={params.username} />
+                  <FavBtn username={safeUsername} />
                 </div>
               </div>
             </div>
@@ -363,7 +363,7 @@ const Stream: Component = () => {
                     avatar={`${instanceBaseUrl}/api/proxy?url=${base64encode(
                       streamMetadata()?.avatar!
                     )}`}
-                    username={params.username}
+                    username={safeUsername}
                   />
                 </div>
                 </WatchDetails>

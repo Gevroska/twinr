@@ -257,9 +257,9 @@ const Vods: Component = () => {
                     <Show when={isDownloadSectionOpen() == true}>
                       <div class="mt-1 mb-2">
                         <DownloadVods
-                          id={id}
+                          id={id ?? ""}
                           queryString={queryString()}
-                          streamer={vodInfo()?.username!}
+                          streamer={vodInfo()?.username ?? ""}
                           title={vodInfo()?.title!}
                         />
                       </div>
