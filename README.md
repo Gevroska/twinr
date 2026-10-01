@@ -6,6 +6,8 @@ Twinr is a privacy-focused alternative frontend to Twitch, inspired by [Invidiou
 
 The production server is Rust (Axum, Tokio, Reqwest); SolidJS owns the UI.
 
+The former Deno server has been retired and removed because its proxy routes did not enforce the outbound network policy. Deno hosting is no longer supported. Existing Deno installations must migrate to the Rust server or the Docker image using the instructions below; updating this repository does not stop an already-running Deno process.
+
 Production JavaScript and CSS are minified; hashed assets are immutable-cacheable.
 Secondary Solid routes load on demand. HLS is imported only when an actual HLS player is ready, so home, offline channels, clips and direct Opus playback do not download it. A build check caps initial JavaScript at 64 KiB and rejects eager player/route imports. Deferred chunks use the existing static-file server and cache policy; no server rendering or additional API polling is introduced.
 
