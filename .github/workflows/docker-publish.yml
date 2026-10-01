@@ -98,12 +98,38 @@ jobs:
           for attempt in {1..20}; do
             if curl --fail --silent http://127.0.0.1:39876/api > /tmp/twinr-api.json; then
               cat /tmp/twinr-api.json
-              exit 0
+              break
             fi
             sleep 1
           done
-          docker logs twinr-smoke
-          exit 1
+          curl --fail --silent http://127.0.0.1:39876/api > /dev/null || {
+            docker logs twinr-smoke
+            exit 1
+          }
+          curl --fail --silent http://127.0.0.1:39876/ > /dev/null
+          for target in \
+            'http://127.0.0.1/admin' \
+            'https://127.0.0.1/admin' \
+            'https://2130706433/admin' \
+            'https://[::ffff:127.0.0.1]/admin' \
+            'https://169.254.169.254/metadata' \
+            'https://10.0.0.1/private' \
+            'https://twitch.tv.evil.example/private' \
+            'https://twitch.tv@evil.example/private'; do
+            encoded=$(printf '%s' "$target" | base64 -w0)
+            for route in urlproxy proxy playlist; do
+              value="$target"
+              if [ "$route" != urlproxy ]; then value="$encoded"; fi
+              status=$(curl --silent --show-error --max-time 5 --output /tmp/twinr-proxy.json \
+                --write-out '%{http_code}' --get --data-urlencode "url=$value" \
+                "http://127.0.0.1:39876/api/$route")
+              if [ "$status" != 403 ]; then
+                echo "Expected forbidden destination on /api/$route, got $status"
+                cat /tmp/twinr-proxy.json
+                exit 1
+              fi
+            done
+          done
 
       # Sign the resulting Docker image digest except on PRs.
       # This will only write to the public Rekor transparency log when the Docker
